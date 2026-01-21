@@ -1,0 +1,7 @@
+{
+  "name": "Scripta",
+  "description": "An offline-first, distraction-free writing and thinking workspace designed for deep focus. Features multitasking, linking, and AI-powered assistance.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
