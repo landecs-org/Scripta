@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Activity } from '../types';
 import { ArrowLeft, Sparkles, ChevronDown, ChevronUp, Link as LinkIcon, Palette, X, BarChart2, Check, ExternalLink, Wand2, Share2, Copy, FileText, Download, Mic, MicOff, Maximize2, Minimize2, SpellCheck, MoreHorizontal, LayoutTemplate } from 'lucide-react';
-// Fix: Import COSTS constant
 import { generateAIContent, getAIPoints, calculateCustomCost, generateTitleFromContent, checkPointsAvailable, checkSpelling, COSTS } from '../services/geminiService';
 import { dbService } from '../services/db';
 import { Button } from './Button';

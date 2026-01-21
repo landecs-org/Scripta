@@ -7,26 +7,28 @@ interface HistoryProps {
 }
 
 export const History: React.FC<HistoryProps> = ({ activities }) => {
-  const [containerWidth, setContainerWidth] = useState(800);
+  const [dimensions, setDimensions] = useState({ width: 800, height: 300 });
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
-    
-    const updateWidth = () => {
-        if (containerRef.current) {
-            setContainerWidth(containerRef.current.clientWidth);
-        }
-    };
 
     const resizeObserver = new ResizeObserver(entries => {
       for (let entry of entries) {
-        setContainerWidth(entry.contentRect.width);
+        setDimensions({
+            width: entry.contentRect.width,
+            height: entry.contentRect.height
+        });
       }
     });
 
     resizeObserver.observe(containerRef.current);
-    updateWidth(); // Initial call
+    
+    // Initial measure
+    setDimensions({
+        width: containerRef.current.clientWidth,
+        height: containerRef.current.clientHeight
+    });
     
     return () => resizeObserver.disconnect();
   }, []);
@@ -100,7 +102,7 @@ export const History: React.FC<HistoryProps> = ({ activities }) => {
     return { totalWords, totalActivities, longestActivity, last7Days, maxCount, currentStreak, bestDay };
   }, [activities]);
 
-  // Generate SVG Path
+  // Generate SVG Path using current dimensions to ensure no distortion
   const getPath = (data: {count: number}[], width: number, height: number) => {
       if (data.length === 0) return "";
       if (width === 0) return "";
@@ -151,63 +153,75 @@ export const History: React.FC<HistoryProps> = ({ activities }) => {
         </h2>
         
         <div ref={containerRef} className="h-48 sm:h-64 md:h-72 w-full relative group touch-pan-x flex-1 min-h-[200px]">
-           <svg 
-             viewBox={`0 0 ${containerWidth} 300`} 
-             preserveAspectRatio="none" 
-             className="w-full h-full overflow-visible"
-           >
-               <defs>
-                   <linearGradient id="gradient" x1="0" x2="0" y1="0" y2="1">
-                       <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.2"/>
-                       <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0"/>
-                   </linearGradient>
-               </defs>
-               
-               {/* Grid Lines */}
-               <line x1="0" y1="75" x2={containerWidth} y2="75" stroke="currentColor" strokeOpacity="0.05" strokeDasharray="4"/>
-               <line x1="0" y1="150" x2={containerWidth} y2="150" stroke="currentColor" strokeOpacity="0.05" strokeDasharray="4"/>
-               <line x1="0" y1="225" x2={containerWidth} y2="225" stroke="currentColor" strokeOpacity="0.05" strokeDasharray="4"/>
-               
-               {/* Area */}
-               <path 
-                  d={getAreaPath(stats.last7Days, containerWidth, 300)} 
-                  fill="url(#gradient)" 
-                  className="transition-all duration-1000 ease-out"
-               />
-               
-               {/* Line */}
-               <path 
-                  d={getPath(stats.last7Days, containerWidth, 300)} 
-                  fill="none" 
-                  stroke="var(--color-primary)" 
-                  strokeWidth="3" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round"
-                  className="transition-all duration-1000 ease-out"
-               />
+           {dimensions.width > 0 && (
+               <svg 
+                 width={dimensions.width}
+                 height={dimensions.height}
+                 viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
+                 className="overflow-visible"
+               >
+                   <defs>
+                       <linearGradient id="gradient" x1="0" x2="0" y1="0" y2="1">
+                           <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.2"/>
+                           <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0"/>
+                       </linearGradient>
+                   </defs>
+                   
+                   {/* Grid Lines */}
+                   {[0.25, 0.5, 0.75].map(ratio => (
+                       <line 
+                         key={ratio}
+                         x1="0" 
+                         y1={dimensions.height * ratio} 
+                         x2={dimensions.width} 
+                         y2={dimensions.height * ratio} 
+                         stroke="currentColor" 
+                         strokeOpacity="0.05" 
+                         strokeDasharray="4"
+                       />
+                   ))}
+                   
+                   {/* Area */}
+                   <path 
+                      d={getAreaPath(stats.last7Days, dimensions.width, dimensions.height)} 
+                      fill="url(#gradient)" 
+                      className="transition-all duration-1000 ease-out"
+                   />
+                   
+                   {/* Line */}
+                   <path 
+                      d={getPath(stats.last7Days, dimensions.width, dimensions.height)} 
+                      fill="none" 
+                      stroke="var(--color-primary)" 
+                      strokeWidth="3" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round"
+                      className="transition-all duration-1000 ease-out"
+                   />
 
-               {/* Points & Touch Targets */}
-               {stats.last7Days.map((d, i) => {
-                   const x = i * (containerWidth / 6);
-                   const y = 300 - (d.count / stats.maxCount) * 300;
-                   return (
-                       <g key={i} className="group/point">
-                           <line x1={x} y1={y} x2={x} y2={300} stroke="var(--color-primary)" strokeWidth="1" strokeDasharray="2" className="opacity-0 group-hover/point:opacity-30 transition-opacity"/>
-                           <circle cx={x} cy={y} r="6" fill="var(--color-surface)" stroke="var(--color-primary)" strokeWidth="3" className="transition-all hover:r-8 z-10"/>
-                           
-                           {/* Tooltip */}
-                           <foreignObject x={Math.max(0, Math.min(x - 50, containerWidth - 100))} y={Math.max(0, y - 60)} width="100" height="50" className="overflow-visible pointer-events-none">
-                              <div className="flex flex-col items-center justify-center opacity-0 group-hover/point:opacity-100 transition-opacity duration-200">
-                                <div className="bg-surface text-surface-fg text-xs py-1 px-2 rounded-lg shadow-xl border border-black/10 font-bold whitespace-nowrap">
-                                  {d.count} words
-                                </div>
-                                <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[6px] border-t-surface mt-[-1px]"></div>
-                              </div>
-                           </foreignObject>
-                       </g>
-                   );
-               })}
-           </svg>
+                   {/* Points & Touch Targets */}
+                   {stats.last7Days.map((d, i) => {
+                       const x = i * (dimensions.width / 6);
+                       const y = dimensions.height - (d.count / stats.maxCount) * dimensions.height;
+                       return (
+                           <g key={i} className="group/point">
+                               <line x1={x} y1={y} x2={x} y2={dimensions.height} stroke="var(--color-primary)" strokeWidth="1" strokeDasharray="2" className="opacity-0 group-hover/point:opacity-30 transition-opacity"/>
+                               <circle cx={x} cy={y} r="6" fill="var(--color-surface)" stroke="var(--color-primary)" strokeWidth="3" className="transition-all hover:r-8 z-10"/>
+                               
+                               {/* Tooltip */}
+                               <foreignObject x={Math.max(0, Math.min(x - 50, dimensions.width - 100))} y={Math.max(0, y - 60)} width="100" height="50" className="overflow-visible pointer-events-none">
+                                  <div className="flex flex-col items-center justify-center opacity-0 group-hover/point:opacity-100 transition-opacity duration-200">
+                                    <div className="bg-surface text-surface-fg text-xs py-1 px-2 rounded-lg shadow-xl border border-black/10 font-bold whitespace-nowrap">
+                                      {d.count} words
+                                    </div>
+                                    <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[6px] border-t-surface mt-[-1px]"></div>
+                                  </div>
+                               </foreignObject>
+                           </g>
+                       );
+                   })}
+               </svg>
+           )}
            
            {/* X Axis Labels */}
            <div className="flex justify-between mt-4 px-1 absolute bottom-0 left-0 right-0 transform translate-y-6">
