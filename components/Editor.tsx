@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Activity } from '../types';
-import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, X, BarChart2, Check, ExternalLink, Share2, Copy, FileText, Download, Mic, MicOff, Maximize2, Minimize2, MoreVertical, Save, Clock, Slash, ArrowRight, Bold, Italic, Hash, List, CheckSquare, Type } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, X, BarChart2, Check, ExternalLink, Share2, Copy, FileText, Download, Mic, MicOff, Maximize2, Minimize2, MoreVertical, Save, Clock, Slash, ArrowRight, Bold, Italic, Hash, List, CheckSquare, Type, Eye, EyeOff } from 'lucide-react';
 import { dbService } from '../services/db';
 import { Button } from './Button';
 import { ActivityPicker } from './ActivityPicker';
@@ -20,6 +20,66 @@ interface EditorProps {
   onSwitchActivity: (activity: Activity) => void;
 }
 
+// Simple Markdown Parser Component
+const MarkdownPreview: React.FC<{ content: string }> = ({ content }) => {
+  if (!content) return <div className="text-surface-fg/30 italic">No content to preview</div>;
+
+  const renderContent = (text: string) => {
+    // Basic safety escape
+    let html = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Code blocks
+    html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+    
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Horizontal Rule
+    html = html.replace(/^---$/gm, '<hr />');
+    html = html.replace(/^\*\*\*$/gm, '<hr />');
+
+    // Headers
+    html = html.replace(/^# (.*$)/gm, '<h1>$1</h1>');
+    html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>');
+    html = html.replace(/^### (.*$)/gm, '<h3>$1</h3>');
+
+    // Blockquotes
+    html = html.replace(/^> (.*$)/gm, '<blockquote>$1</blockquote>');
+
+    // Bold
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/__(.*?)__/g, '<strong>$1</strong>');
+
+    // Italic
+    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    html = html.replace(/_(.*?)_/g, '<em>$1</em>');
+
+    // Unordered Lists
+    html = html.replace(/^\s*-\s+(.*$)/gm, '<ul><li>$1</li></ul>');
+    // Fix adjacent lists (hacky regex)
+    html = html.replace(/<\/ul>\s*<ul>/g, '');
+
+    // Checkboxes (Task lists)
+    html = html.replace(/^\s*\[ \]\s+(.*$)/gm, '<div class="flex items-center gap-2 mb-1"><div class="w-4 h-4 border border-current rounded opacity-50"></div><span>$1</span></div>');
+    html = html.replace(/^\s*\[x\]\s+(.*$)/gm, '<div class="flex items-center gap-2 mb-1"><div class="w-4 h-4 bg-primary text-white flex items-center justify-center rounded"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4"><polyline points="20 6 9 17 4 12"></polyline></svg></div><span class="opacity-50 line-through">$1</span></div>');
+
+    // Line breaks for paragraphs (if not inside pre/ul/blockquote)
+    html = html.replace(/\n/g, '<br />');
+
+    return { __html: html };
+  };
+
+  return (
+    <div 
+      className="markdown-body selectable-text pb-[50vh] text-lg leading-loose"
+      dangerouslySetInnerHTML={renderContent(content)} 
+    />
+  );
+};
+
 export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWordCount, allActivities = [], onSwitchActivity }) => {
   const [title, setTitle] = useState(activity.title);
   const [content, setContent] = useState(activity.content);
@@ -31,6 +91,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
   const [focusMode, setFocusMode] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showFormatBar, setShowFormatBar] = useState(false);
+  const [isReadingMode, setIsReadingMode] = useState(false);
   
   const [isDictating, setIsDictating] = useState(false);
   const [showDictationModal, setShowDictationModal] = useState(false);
@@ -314,7 +375,12 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
               
               {/* Desktop Toolbar */}
               <div className="hidden md:flex items-center gap-1">
-                  <button onClick={() => setShowFormatBar(!showFormatBar)} className={`p-2 rounded-full text-surface-fg/70 active:scale-90 duration-200 ${showFormatBar ? 'bg-black/5 text-primary' : 'hover:bg-black/5'}`} title="Formatting"><Type size={20} /></button>
+                  <button onClick={() => setIsReadingMode(!isReadingMode)} className={`p-2 rounded-full text-surface-fg/70 active:scale-90 duration-200 ${isReadingMode ? 'bg-black/5 text-primary' : 'hover:bg-black/5'}`} title={isReadingMode ? "Edit Mode" : "Read Mode"}>
+                      {isReadingMode ? <EyeOff size={20}/> : <Eye size={20} />}
+                  </button>
+                  {!isReadingMode && (
+                      <button onClick={() => setShowFormatBar(!showFormatBar)} className={`p-2 rounded-full text-surface-fg/70 active:scale-90 duration-200 ${showFormatBar ? 'bg-black/5 text-primary' : 'hover:bg-black/5'}`} title="Formatting"><Type size={20} /></button>
+                  )}
                   <button onClick={startDictation} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Dictate"><Mic size={20} /></button>
                   <button onClick={() => { vibrate(10); setShowColorPicker(!showColorPicker); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Change Color"><Palette size={20} /></button>
                   <button onClick={() => { vibrate(10); setShowLinkPicker(true); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Link Thought"><LinkIcon size={20} /></button>
@@ -334,8 +400,11 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                   
                   {showMobileMenu && (
                       <div className="absolute top-12 right-0 bg-surface rounded-xl shadow-xl border border-black/10 w-56 animate-scale-in origin-top-right overflow-hidden z-30 flex flex-col p-2">
-                          <MobileMenuItem icon={<Type size={18}/>} label={showFormatBar ? "Hide Formatting" : "Show Formatting"} onClick={() => { setShowFormatBar(!showFormatBar); setShowMobileMenu(false); }} />
+                          <MobileMenuItem icon={isReadingMode ? <EyeOff size={18}/> : <Eye size={18}/>} label={isReadingMode ? "Switch to Edit" : "Switch to Read"} onClick={() => { setIsReadingMode(!isReadingMode); setShowMobileMenu(false); }} />
                           <div className="h-px bg-black/5 dark:bg-white/5 my-1 mx-2"></div>
+                          {!isReadingMode && (
+                              <MobileMenuItem icon={<Type size={18}/>} label={showFormatBar ? "Hide Formatting" : "Show Formatting"} onClick={() => { setShowFormatBar(!showFormatBar); setShowMobileMenu(false); }} />
+                          )}
                           <MobileMenuItem icon={<Mic size={18}/>} label="Dictate" onClick={startDictation} />
                           <MobileMenuItem icon={<Palette size={18}/>} label="Color Theme" onClick={() => setShowColorPicker(true)} />
                           <MobileMenuItem icon={<LinkIcon size={18}/>} label="Link Activity" onClick={() => setShowLinkPicker(true)} />
@@ -370,7 +439,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
       <div className={`flex-1 overflow-y-auto w-full no-scrollbar scroll-smooth print:overflow-visible transition-all duration-700 ease-fluid ${focusMode ? 'px-[5vw] pt-24 pb-32 flex flex-col items-center' : 'px-6 py-8 max-w-3xl mx-auto pb-32'}`}>
         
         {/* Markdown Toolbar */}
-        {showFormatBar && (
+        {!isReadingMode && showFormatBar && (
             <div className={`w-full max-w-2xl mx-auto mb-6 flex items-center justify-center gap-2 sm:gap-4 p-2 rounded-xl bg-black/5 dark:bg-white/5 animate-slide-up ${focusMode ? 'mb-12' : ''}`}>
                 <button onClick={() => insertFormat('**', 'wrap')} className="p-2 hover:bg-background rounded-lg transition-colors text-surface-fg/70 hover:text-primary"><Bold size={18}/></button>
                 <button onClick={() => insertFormat('_', 'wrap')} className="p-2 hover:bg-background rounded-lg transition-colors text-surface-fg/70 hover:text-primary"><Italic size={18}/></button>
@@ -386,10 +455,10 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Untitled Thought"
-          className={`bg-transparent font-display font-bold placeholder:text-surface-fg/20 outline-none text-surface-fg transition-all duration-500 ease-fluid ${focusMode ? 'text-4xl sm:text-5xl text-center leading-tight mb-16 w-full max-w-3xl opacity-90' : 'text-3xl sm:text-4xl w-full mb-8'}`}
+          className={`bg-transparent font-display font-bold placeholder:text-surface-fg/20 outline-none text-surface-fg transition-all duration-500 ease-fluid selectable-text ${focusMode ? 'text-4xl sm:text-5xl text-left leading-tight mb-16 w-full max-w-4xl opacity-90' : 'text-3xl sm:text-4xl w-full mb-8'}`}
         />
 
-        {!focusMode && (
+        {!focusMode && !isReadingMode && (
             <div className="flex items-center gap-2 text-primary/50 mb-6 cursor-pointer select-none group w-fit print:hidden" onClick={() => { vibrate(5); setContentVisible(!contentVisible); }}>
               <span className="text-xs font-semibold uppercase tracking-wider group-hover:text-primary transition-colors">Main Content</span>
               <div className="transform transition-transform duration-300 ease-spring group-hover:text-primary">
@@ -398,16 +467,20 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
             </div>
         )}
 
-        <div className={`transition-all duration-700 ease-fluid overflow-hidden w-full ${focusMode ? 'max-w-2xl' : ''} ${contentVisible || focusMode ? 'opacity-100 max-h-[5000px]' : 'opacity-0 max-h-0'} print:opacity-100 print:max-h-none`}>
-             <textarea 
-               ref={textareaRef}
-               value={content}
-               onChange={(e) => setContent(e.target.value)}
-               onPaste={handlePaste}
-               placeholder="Start writing..."
-               className={`w-full bg-transparent resize-none outline-none font-light text-surface-fg placeholder:text-surface-fg/20 transition-all duration-500 ease-fluid pb-[50vh] ${focusMode ? 'text-xl sm:text-2xl leading-[2] tracking-wide min-h-[80vh]' : 'text-lg leading-loose min-h-[50vh]'}`}
-               spellCheck="false"
-             />
+        <div className={`transition-all duration-700 ease-fluid overflow-hidden w-full ${focusMode ? 'max-w-4xl' : ''} ${contentVisible || focusMode ? 'opacity-100 max-h-[5000px]' : 'opacity-0 max-h-0'} print:opacity-100 print:max-h-none`}>
+             {isReadingMode ? (
+                 <MarkdownPreview content={content} />
+             ) : (
+                 <textarea 
+                   ref={textareaRef}
+                   value={content}
+                   onChange={(e) => setContent(e.target.value)}
+                   onPaste={handlePaste}
+                   placeholder="Start writing..."
+                   className={`w-full bg-transparent resize-none outline-none font-light text-surface-fg placeholder:text-surface-fg/20 transition-all duration-500 ease-fluid pb-[50vh] text-left selectable-text ${focusMode ? 'text-xl sm:text-2xl leading-[2] tracking-wide min-h-[80vh]' : 'text-lg leading-loose min-h-[50vh]'}`}
+                   spellCheck="false"
+                 />
+             )}
         </div>
 
         {/* Linked Activities Section */}
@@ -454,7 +527,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                                         <textarea 
                                             value={link.content}
                                             onChange={(e) => updateLinkedActivity(link.id, e.target.value)}
-                                            className="w-full bg-transparent resize-none outline-none text-sm font-light leading-relaxed min-h-[120px] p-4 placeholder:opacity-30 focus:bg-white/5 transition-colors"
+                                            className="w-full bg-transparent resize-none outline-none text-sm font-light leading-relaxed min-h-[120px] p-4 placeholder:opacity-30 focus:bg-white/5 transition-colors selectable-text"
                                             placeholder="Write in this linked thought..."
                                         />
                                         <div className="p-2 border-t border-black/5 dark:border-white/5 flex justify-between items-center bg-black/5 dark:bg-white/5">

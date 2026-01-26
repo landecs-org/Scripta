@@ -1,3 +1,5 @@
+import { stripMarkdown } from './markdown';
+
 export interface TextStats {
   words: number;
   chars: number;
@@ -13,7 +15,9 @@ export interface TextStats {
 }
 
 export const analyzeText = (text: string): TextStats => {
-  const cleanText = text.trim();
+  // Strip markdown for accurate content analysis
+  const cleanText = stripMarkdown(text || '').trim();
+  
   if (!cleanText) {
     return {
       words: 0,
@@ -33,10 +37,10 @@ export const analyzeText = (text: string): TextStats => {
   // Basic Counts
   const words = cleanText.split(/\s+/).filter(w => w.length > 0);
   const wordCount = words.length;
-  const charCount = text.length;
-  const charCountNoSpaces = text.replace(/\s/g, '').length;
-  const paragraphs = text.split(/\n+/).filter(p => p.trim().length > 0).length;
-  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0).length || 1;
+  const charCount = cleanText.length;
+  const charCountNoSpaces = cleanText.replace(/\s/g, '').length;
+  const paragraphs = cleanText.split(/\n+/).filter(p => p.trim().length > 0).length;
+  const sentences = cleanText.split(/[.!?]+/).filter(s => s.trim().length > 0).length || 1;
   const syllables = countSyllablesInText(words);
 
   // Time calculations
