@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from './Button';
-import { Sparkles, CloudOff, PenTool, ArrowRight, Check } from 'lucide-react';
+import { CloudOff, PenTool, ArrowRight, Check } from 'lucide-react';
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -19,11 +19,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
       icon: <CloudOff size={48} className="text-primary" />,
       title: "Offline First",
       description: "Your data stays on your device. No accounts, no tracking, no cloud sync required.",
-    },
-    {
-      icon: <Sparkles size={48} className="text-primary" />,
-      title: "Scripta AI",
-      description: "Enhance your writing with a built-in AI assistant. Proofread, rewrite, and expand ideas instantly.",
     }
   ];
 
