@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Activity } from '../types';
-// Fixed: Added Clock to the lucide-react imports
-import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, X, BarChart2, Check, ExternalLink, Share2, Copy, FileText, Download, Mic, MicOff, Maximize2, Minimize2, MoreHorizontal, Save, Clock } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, X, BarChart2, Check, ExternalLink, Share2, Copy, FileText, Download, Mic, MicOff, Maximize2, Minimize2, MoreHorizontal, Save, Clock, Slash, ArrowRight } from 'lucide-react';
 import { dbService } from '../services/db';
 import { Button } from './Button';
 import { ActivityPicker } from './ActivityPicker';
@@ -133,20 +132,12 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
     setConfirmState({ isOpen: true, title, message, isDangerous, onConfirm });
   };
 
-  /**
-   * SMART SWAP LOGIC:
-   * Prevents data loss by saving the current activity and ensuring the new activity 
-   * has a link back to this one before switching.
-   */
   const handleSwitchToLinked = async (targetActivity: Activity) => {
       vibrate(15);
-      // 1. Save current context immediately
       await forceSave();
 
-      // 2. Prepare the target activity to receive a link back to the current one
       const targetLinks = targetActivity.linkedActivityIds || [];
       
-      // Add "this" activity to "target" activity's links if not already there
       if (!targetLinks.includes(activity.id)) {
           const newLinks = [activity.id, ...targetLinks.filter(id => id !== activity.id)].slice(0, 5);
           const updatedTarget = {
@@ -154,29 +145,29 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
               linkedActivityIds: newLinks,
               updatedAt: new Date().toISOString()
           };
-          // Persist the link in the target activity
           await dbService.saveActivity(updatedTarget);
           onSwitchActivity(updatedTarget);
       } else {
-          // Already linked, just switch
           onSwitchActivity(targetActivity);
       }
   };
 
   const handlePaste = async (e: React.ClipboardEvent) => {
     const pastedText = e.clipboardData.getData('text');
-    if (!pastedText || pastedText.length < 50) return;
+    if (!pastedText || pastedText.length < 20) return;
 
     const match = allActivities.find(a => 
-       a.id !== activity.id && 
-       (a.content === pastedText || (a.content.length > 50 && a.content.includes(pastedText)))
+       a.id !== activity.id && !a.deleted && (
+          (a.title && pastedText.trim().toLowerCase() === a.title.toLowerCase()) ||
+          (a.content.length > 50 && a.content.includes(pastedText))
+       )
     );
 
     if (match) {
         e.preventDefault();
         triggerConfirm(
             "Link Activity?",
-            `This text looks like it belongs to "${match.title}". Link that activity instead of duplicating?`,
+            `You pasted text that matches "${match.title}". Would you like to link to that activity instead of pasting the text?`,
             false,
             () => handleLinkActivity(match.id, true)
         );
@@ -346,20 +337,20 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
       {focusMode && (
           <button 
              onClick={toggleFocusMode}
-             className="fixed top-6 right-6 z-[110] p-3 bg-surface/80 backdrop-blur-md rounded-full shadow-lg hover:bg-surface text-surface-fg opacity-40 hover:opacity-100 transition-all duration-300 transform hover:scale-110 border border-black/5"
+             className="fixed top-8 right-8 z-[110] p-4 bg-transparent text-surface-fg/30 hover:text-surface-fg hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-all duration-300 transform active:scale-90"
              title="Exit Focus Mode"
           >
-             <Minimize2 size={24} />
+             <Minimize2 size={28} />
           </button>
       )}
 
-      <div className={`flex-1 overflow-y-auto w-full px-6 py-8 no-scrollbar scroll-smooth print:overflow-visible transition-all duration-500 ${focusMode ? 'max-w-3xl mx-auto pt-24' : 'max-w-3xl mx-auto pb-32'}`}>
+      <div className={`flex-1 overflow-y-auto w-full no-scrollbar scroll-smooth print:overflow-visible transition-all duration-700 ease-fluid ${focusMode ? 'px-[5vw] pt-24 pb-32 flex flex-col items-center' : 'px-6 py-8 max-w-3xl mx-auto pb-32'}`}>
         <input 
           type="text" 
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Untitled Thought"
-          className={`w-full bg-transparent font-display font-bold placeholder:text-surface-fg/20 outline-none mb-8 text-surface-fg transition-all duration-300 ease-spring ${focusMode ? 'text-4xl sm:text-5xl text-center leading-tight' : 'text-3xl sm:text-4xl'}`}
+          className={`bg-transparent font-display font-bold placeholder:text-surface-fg/20 outline-none text-surface-fg transition-all duration-500 ease-fluid ${focusMode ? 'text-4xl sm:text-5xl text-center leading-tight mb-16 w-full max-w-3xl opacity-90' : 'text-3xl sm:text-4xl w-full mb-8'}`}
         />
 
         {!focusMode && (
@@ -371,20 +362,20 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
             </div>
         )}
 
-        <div className={`transition-all duration-500 ease-fluid overflow-hidden ${contentVisible || focusMode ? 'opacity-100 max-h-[5000px]' : 'opacity-0 max-h-0'} print:opacity-100 print:max-h-none`}>
+        <div className={`transition-all duration-700 ease-fluid overflow-hidden w-full ${focusMode ? 'max-w-2xl' : ''} ${contentVisible || focusMode ? 'opacity-100 max-h-[5000px]' : 'opacity-0 max-h-0'} print:opacity-100 print:max-h-none`}>
              <textarea 
                value={content}
                onChange={(e) => setContent(e.target.value)}
                onPaste={handlePaste}
                placeholder="Start writing..."
-               className={`w-full min-h-[50vh] bg-transparent resize-none outline-none leading-loose font-light text-surface-fg placeholder:text-surface-fg/20 transition-all duration-300 ${focusMode ? 'text-xl text-justify hyphens-auto' : 'text-lg'}`}
+               className={`w-full bg-transparent resize-none outline-none font-light text-surface-fg placeholder:text-surface-fg/20 transition-all duration-500 ease-fluid ${focusMode ? 'text-xl sm:text-2xl leading-[2] tracking-wide min-h-[80vh]' : 'text-lg leading-loose min-h-[50vh]'}`}
                spellCheck="false"
              />
         </div>
 
-        {/* Improved Linked Activities Visual Hierarchy */}
+        {/* Linked Activities Section */}
         {!focusMode && linkedActivities.length > 0 && (
-            <div className="mt-20 pt-12 relative print:hidden">
+            <div className="mt-20 pt-12 relative print:hidden w-full">
                 <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-black/10 dark:via-white/10 to-transparent"></div>
                 <div className="flex items-center justify-between mb-8 px-2">
                     <h3 className="text-xs font-bold uppercase tracking-widest opacity-40 flex items-center gap-2">
@@ -414,7 +405,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                                         <div className="p-1.5 bg-background rounded-lg shadow-sm transform transition-all duration-300 group-hover:scale-110">
                                             <LinkIcon size={14} />
                                         </div>
-                                        <span className="truncate max-w-[250px] group-hover:underline decoration-primary/30 underline-offset-4">{link.title || 'Untitled'}</span>
+                                        <span className="truncate max-w-[200px] sm:max-w-[300px] group-hover:underline decoration-primary/30 underline-offset-4">{link.title || 'Untitled'}</span>
                                         <div className="transform transition-transform duration-300 opacity-40">
                                             {collapsedLinks[link.id] ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                                         </div>
@@ -426,8 +417,8 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                                             className="flex items-center gap-2 bg-primary text-primary-fg text-[10px] uppercase font-bold px-3 py-1.5 rounded-lg hover:shadow-lg hover:shadow-primary/20 transition-all active:scale-95"
                                             title="Smart Swap: Move current text to links and open this one"
                                         >
-                                            <Maximize2 size={12} />
-                                            <span>Switch Focus</span>
+                                            <span className="hidden sm:inline">Open Activity</span>
+                                            <ArrowRight size={12} />
                                         </button>
                                         <button 
                                           onClick={() => handleUnlink(link.id)} 
@@ -441,10 +432,11 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                                 
                                 <div className={`overflow-hidden transition-all duration-700 ease-fluid ${collapsedLinks[link.id] ? 'max-h-0 opacity-0 scale-95' : 'max-h-[800px] opacity-100 scale-100'}`}>
                                     <div className="bg-surface/40 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-black/5 dark:border-white/5 hover:border-primary/20 transition-all group/card">
+                                        <div className="mb-2 text-xs opacity-50 uppercase tracking-widest font-bold">Snippet</div>
                                         <textarea 
                                             value={link.content}
                                             onChange={(e) => updateLinkedActivity(link.id, e.target.value)}
-                                            className="w-full bg-transparent resize-none outline-none text-base opacity-90 font-light leading-relaxed min-h-[150px]"
+                                            className="w-full bg-transparent resize-none outline-none text-base opacity-90 font-light leading-relaxed min-h-[100px]"
                                             placeholder="Write something in this linked thought..."
                                         />
                                         <div className="flex items-center justify-between mt-4 pt-4 border-t border-black/5 dark:border-white/5 opacity-0 group-hover/card:opacity-100 transition-opacity">
@@ -488,9 +480,16 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                     <button 
                         key={c} 
                         onClick={() => { setFlatColor(c); setShowColorPicker(false); vibrate(10); }} 
-                        className="w-11 h-11 rounded-full border-2 border-black/10 shadow-inner transition-all hover:scale-110 active:scale-90 duration-300 ease-spring" 
-                        style={{ backgroundColor: c }} 
-                    />
+                        className="w-11 h-11 rounded-full border-2 border-black/10 shadow-inner transition-all hover:scale-110 active:scale-90 duration-300 ease-spring relative overflow-hidden" 
+                        style={{ backgroundColor: c }}
+                        title={c === 'transparent' ? "Remove Color" : "Set Color"}
+                    >
+                         {c === 'transparent' && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <Slash size={20} className="text-black/30 dark:text-white/30" />
+                            </div>
+                         )}
+                    </button>
                 ))}
             </div>
           </div>
