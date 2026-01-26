@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Activity } from '../types';
-import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, X, BarChart2, Check, ExternalLink, Share2, Copy, FileText, Download, Mic, MicOff, Maximize2, Minimize2, MoreHorizontal } from 'lucide-react';
+// Fixed: Added Clock to the lucide-react imports
+import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, X, BarChart2, Check, ExternalLink, Share2, Copy, FileText, Download, Mic, MicOff, Maximize2, Minimize2, MoreHorizontal, Save, Clock } from 'lucide-react';
 import { dbService } from '../services/db';
 import { Button } from './Button';
 import { ActivityPicker } from './ActivityPicker';
@@ -97,39 +98,28 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
     loadLinked();
   }, [activity.linkedActivityIds]);
 
+  // Auto-save logic
   useEffect(() => {
     const timer = setTimeout(async () => {
       if (title !== activity.title || content !== activity.content || flatColor !== activity.flatColor) {
-        setIsSaving(true);
-        const updatedActivity: Activity = {
-          ...activity,
-          title,
-          content,
-          flatColor,
-          wordCount: stats.words,
-          updatedAt: new Date().toISOString(),
-        };
-        await onSave(updatedActivity);
-        setIsSaving(false);
+        await forceSave();
       }
     }, 1500); 
     return () => clearTimeout(timer);
   }, [title, content, flatColor]);
 
   const forceSave = async () => {
-      if (title !== activity.title || content !== activity.content || flatColor !== activity.flatColor) {
-          setIsSaving(true);
-          const updatedActivity: Activity = {
-              ...activity,
-              title,
-              content,
-              flatColor,
-              wordCount: stats.words,
-              updatedAt: new Date().toISOString(),
-          };
-          await onSave(updatedActivity);
-          setIsSaving(false);
-      }
+      setIsSaving(true);
+      const updatedActivity: Activity = {
+          ...activity,
+          title,
+          content,
+          flatColor,
+          wordCount: stats.words,
+          updatedAt: new Date().toISOString(),
+      };
+      await onSave(updatedActivity);
+      setIsSaving(false);
   }
 
   const handleBack = async () => {
@@ -143,10 +133,20 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
     setConfirmState({ isOpen: true, title, message, isDangerous, onConfirm });
   };
 
+  /**
+   * SMART SWAP LOGIC:
+   * Prevents data loss by saving the current activity and ensuring the new activity 
+   * has a link back to this one before switching.
+   */
   const handleSwitchToLinked = async (targetActivity: Activity) => {
-      vibrate(10);
+      vibrate(15);
+      // 1. Save current context immediately
       await forceSave();
+
+      // 2. Prepare the target activity to receive a link back to the current one
       const targetLinks = targetActivity.linkedActivityIds || [];
+      
+      // Add "this" activity to "target" activity's links if not already there
       if (!targetLinks.includes(activity.id)) {
           const newLinks = [activity.id, ...targetLinks.filter(id => id !== activity.id)].slice(0, 5);
           const updatedTarget = {
@@ -154,9 +154,11 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
               linkedActivityIds: newLinks,
               updatedAt: new Date().toISOString()
           };
+          // Persist the link in the target activity
           await dbService.saveActivity(updatedTarget);
           onSwitchActivity(updatedTarget);
       } else {
+          // Already linked, just switch
           onSwitchActivity(targetActivity);
       }
   };
@@ -273,6 +275,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
       setLinkedActivities(prev => prev.map(a => a.id === linkedId ? { ...a, content: newContent } : a));
       const act = linkedActivities.find(a => a.id === linkedId);
       if (act) {
+          // Real-time background sync for linked activities
           await dbService.saveActivity({ ...act, content: newContent, updatedAt: new Date().toISOString() });
       }
   };
@@ -295,13 +298,18 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
             </button>
             
             <div className="flex items-center gap-1 sm:gap-2 relative">
-              {isSaving && <span className="text-xs text-primary animate-pulse mr-2 font-medium tracking-wide">Saving...</span>}
+              {isSaving && (
+                <div className="flex items-center gap-2 mr-2 px-3 py-1 bg-primary/10 rounded-full">
+                    <Save size={14} className="text-primary animate-pulse"/>
+                    <span className="text-[10px] uppercase font-bold tracking-tighter text-primary">Autosaving</span>
+                </div>
+              )}
               
               <div className="hidden md:flex items-center gap-1">
                   <button onClick={startDictation} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Dictate"><Mic size={20} /></button>
-                  <button onClick={() => { vibrate(10); setShowColorPicker(!showColorPicker); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200"><Palette size={20} /></button>
-                  <button onClick={() => { vibrate(10); setShowLinkPicker(true); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200"><LinkIcon size={20} /></button>
-                  <button onClick={(e) => { e.stopPropagation(); vibrate(10); setShowExportMenu(!showExportMenu); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200"><Share2 size={20} /></button>
+                  <button onClick={() => { vibrate(10); setShowColorPicker(!showColorPicker); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Change Color"><Palette size={20} /></button>
+                  <button onClick={() => { vibrate(10); setShowLinkPicker(true); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Link Thought"><LinkIcon size={20} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); vibrate(10); setShowExportMenu(!showExportMenu); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Share"><Share2 size={20} /></button>
               </div>
 
               <button onClick={toggleFocusMode} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Focus Mode"><Maximize2 size={20} /></button>
@@ -350,13 +358,13 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
           type="text" 
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Untitled"
+          placeholder="Untitled Thought"
           className={`w-full bg-transparent font-display font-bold placeholder:text-surface-fg/20 outline-none mb-8 text-surface-fg transition-all duration-300 ease-spring ${focusMode ? 'text-4xl sm:text-5xl text-center leading-tight' : 'text-3xl sm:text-4xl'}`}
         />
 
         {!focusMode && (
             <div className="flex items-center gap-2 text-primary/50 mb-6 cursor-pointer select-none group w-fit print:hidden" onClick={() => { vibrate(5); setContentVisible(!contentVisible); }}>
-              <span className="text-xs font-semibold uppercase tracking-wider group-hover:text-primary transition-colors">Content</span>
+              <span className="text-xs font-semibold uppercase tracking-wider group-hover:text-primary transition-colors">Main Content</span>
               <div className="transform transition-transform duration-300 ease-spring group-hover:text-primary">
                 {contentVisible ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </div>
@@ -369,63 +377,84 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                onChange={(e) => setContent(e.target.value)}
                onPaste={handlePaste}
                placeholder="Start writing..."
-               className={`w-full min-h-[60vh] bg-transparent resize-none outline-none leading-loose font-light text-surface-fg placeholder:text-surface-fg/20 transition-all duration-300 ${focusMode ? 'text-xl text-justify hyphens-auto' : 'text-lg'}`}
+               className={`w-full min-h-[50vh] bg-transparent resize-none outline-none leading-loose font-light text-surface-fg placeholder:text-surface-fg/20 transition-all duration-300 ${focusMode ? 'text-xl text-justify hyphens-auto' : 'text-lg'}`}
                spellCheck="false"
              />
         </div>
 
+        {/* Improved Linked Activities Visual Hierarchy */}
         {!focusMode && linkedActivities.length > 0 && (
-            <div className="mt-16 pt-8 relative print:hidden">
+            <div className="mt-20 pt-12 relative print:hidden">
                 <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-black/10 dark:via-white/10 to-transparent"></div>
-                <h3 className="text-sm font-bold uppercase tracking-wider opacity-50 mb-6 flex justify-between items-center pl-2">
-                    Linked Activities ({linkedActivities.length}/5)
-                </h3>
-                <div className="space-y-8">
+                <div className="flex items-center justify-between mb-8 px-2">
+                    <h3 className="text-xs font-bold uppercase tracking-widest opacity-40 flex items-center gap-2">
+                        <LinkIcon size={14} className="text-primary"/>
+                        Linked Context ({linkedActivities.length}/5)
+                    </h3>
+                    <button 
+                        onClick={() => setShowLinkPicker(true)}
+                        className="text-[10px] uppercase font-bold text-primary px-3 py-1 bg-primary/5 rounded-full hover:bg-primary/10 transition-colors"
+                    >
+                        + Add Link
+                    </button>
+                </div>
+                
+                <div className="space-y-12">
                     {linkedActivities.map(link => (
-                        <div key={link.id} className="relative group transition-all duration-500 ease-spring hover:-translate-y-1">
-                            <div className="absolute -left-3 top-4 bottom-4 w-px bg-primary/20 border-l border-dashed border-primary/30"></div>
-                            <div className="border-l-2 border-primary/60 pl-4 transition-all duration-300">
-                                <div className="flex items-center justify-between mb-3 bg-primary/5 rounded-r-lg p-2 pr-4">
+                        <div key={link.id} className="relative group transition-all duration-500 ease-spring">
+                            {/* Connection line */}
+                            <div className="absolute -left-5 top-0 bottom-0 w-[2px] bg-gradient-to-b from-primary/30 via-primary/5 to-transparent border-l-2 border-dashed border-primary/20"></div>
+                            
+                            <div className="pl-6 transition-all duration-300">
+                                <div className="flex items-center justify-between mb-4 bg-primary/5 rounded-xl p-3 pr-5 border border-primary/10">
                                     <div 
-                                      className="flex items-center gap-2 cursor-pointer select-none text-primary font-bold font-display"
+                                      className="flex items-center gap-3 cursor-pointer select-none text-primary font-bold font-display flex-1 group"
                                       onClick={() => toggleLinkCollapse(link.id)}
                                     >
-                                        <div className="p-1 bg-background rounded-md shadow-sm transform transition-transform duration-300 group-hover:rotate-45">
-                                            <LinkIcon size={12} />
+                                        <div className="p-1.5 bg-background rounded-lg shadow-sm transform transition-all duration-300 group-hover:scale-110">
+                                            <LinkIcon size={14} />
                                         </div>
-                                        <span className="truncate max-w-[200px]">{link.title || 'Untitled'}</span>
-                                        <div className="transform transition-transform duration-300">
-                                            {collapsedLinks[link.id] ? <ChevronDown size={14} className="opacity-50"/> : <ChevronUp size={14} className="opacity-50"/>}
+                                        <span className="truncate max-w-[250px] group-hover:underline decoration-primary/30 underline-offset-4">{link.title || 'Untitled'}</span>
+                                        <div className="transform transition-transform duration-300 opacity-40">
+                                            {collapsedLinks[link.id] ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-1">
+                                    
+                                    <div className="flex items-center gap-2">
                                         <button 
                                             onClick={() => handleSwitchToLinked(link)}
-                                            className="text-primary opacity-40 hover:opacity-100 p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-all"
-                                            title="Maximize & Swap"
+                                            className="flex items-center gap-2 bg-primary text-primary-fg text-[10px] uppercase font-bold px-3 py-1.5 rounded-lg hover:shadow-lg hover:shadow-primary/20 transition-all active:scale-95"
+                                            title="Smart Swap: Move current text to links and open this one"
                                         >
-                                            <Maximize2 size={14} />
+                                            <Maximize2 size={12} />
+                                            <span>Switch Focus</span>
                                         </button>
                                         <button 
                                           onClick={() => handleUnlink(link.id)} 
-                                          className="text-primary opacity-40 hover:opacity-100 p-1.5 hover:bg-red-500/10 hover:text-red-500 rounded-full transition-all"
-                                          title="Unlink"
+                                          className="text-primary opacity-30 hover:opacity-100 p-2 hover:bg-red-500/10 hover:text-red-500 rounded-lg transition-all"
+                                          title="Remove Link"
                                         >
-                                            <X size={14} />
+                                            <X size={16} />
                                         </button>
                                     </div>
                                 </div>
-                                <div className={`overflow-hidden transition-all duration-500 ease-fluid ${collapsedLinks[link.id] ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
-                                    <div className="bg-surface/50 rounded-xl p-4 shadow-sm border border-black/5 dark:border-white/5 hover:border-primary/20 transition-colors">
+                                
+                                <div className={`overflow-hidden transition-all duration-700 ease-fluid ${collapsedLinks[link.id] ? 'max-h-0 opacity-0 scale-95' : 'max-h-[800px] opacity-100 scale-100'}`}>
+                                    <div className="bg-surface/40 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-black/5 dark:border-white/5 hover:border-primary/20 transition-all group/card">
                                         <textarea 
                                             value={link.content}
                                             onChange={(e) => updateLinkedActivity(link.id, e.target.value)}
-                                            className="w-full bg-transparent resize-none outline-none text-base opacity-90 font-light"
-                                            rows={6}
-                                            placeholder="Empty linked activity..."
+                                            className="w-full bg-transparent resize-none outline-none text-base opacity-90 font-light leading-relaxed min-h-[150px]"
+                                            placeholder="Write something in this linked thought..."
                                         />
-                                        <div className="text-right mt-2 text-[10px] uppercase tracking-wider opacity-40 flex items-center justify-end gap-1 font-bold text-primary">
-                                            <ExternalLink size={10} /> Live Sync
+                                        <div className="flex items-center justify-between mt-4 pt-4 border-t border-black/5 dark:border-white/5 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                                            <div className="text-[10px] uppercase tracking-wider font-bold opacity-30 flex items-center gap-1">
+                                                <ExternalLink size={10} /> Bidirectional Bridge
+                                            </div>
+                                            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold text-green-500">
+                                                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                                                Live Synced
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -437,27 +466,29 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
         )}
       </div>
       
+      {/* Footer / Stats bar */}
       {!focusMode && showWordCount && (
         <button 
           onClick={() => { vibrate(10); setShowAnalytics(true); }}
-          className="fixed bottom-0 left-0 right-0 glass border-t border-black/5 dark:border-white/5 p-3 flex justify-between items-center text-xs text-surface-fg/60 hover:text-primary transition-colors z-20 print:hidden"
+          className="fixed bottom-0 left-0 right-0 glass border-t border-black/5 dark:border-white/5 p-4 flex justify-between items-center text-[11px] font-bold uppercase tracking-widest text-surface-fg/50 hover:text-primary transition-colors z-20 print:hidden"
         >
-           <div className="flex gap-4 mx-auto max-w-3xl w-full px-6">
-             <span>{stats.words} words</span>
-             <span>{stats.readingTime} read</span>
-             <span className="ml-auto flex items-center gap-1 opacity-70"><BarChart2 size={12}/> Analytics</span>
+           <div className="flex gap-6 mx-auto max-w-3xl w-full px-6">
+             <span className="flex items-center gap-1.5"><FileText size={12}/> {stats.words} Words</span>
+             <span className="flex items-center gap-1.5"><Clock size={12}/> {stats.readingTime} Read</span>
+             <span className="ml-auto flex items-center gap-1.5 opacity-80 group hover:opacity-100"><BarChart2 size={14} className="group-hover:scale-110 transition-transform"/> Analytics</span>
            </div>
         </button>
       )}
       
+      {/* Pickers & Modals */}
       {showColorPicker && (
           <div className="fixed inset-0 z-30" onClick={() => setShowColorPicker(false)}>
-            <div className="absolute top-20 right-4 p-4 bg-surface/90 backdrop-blur-md rounded-2xl shadow-xl border border-black/10 z-30 animate-scale-in grid grid-cols-3 gap-3 origin-top-right" onClick={e => e.stopPropagation()}>
+            <div className="absolute top-20 right-4 p-5 bg-surface/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-black/5 z-30 animate-scale-in grid grid-cols-3 gap-3 origin-top-right" onClick={e => e.stopPropagation()}>
                 {CARD_COLORS.map(c => (
                     <button 
                         key={c} 
                         onClick={() => { setFlatColor(c); setShowColorPicker(false); vibrate(10); }} 
-                        className="w-10 h-10 rounded-full border border-black/10 shadow-sm transition-transform active:scale-75 duration-300 ease-spring" 
+                        className="w-11 h-11 rounded-full border-2 border-black/10 shadow-inner transition-all hover:scale-110 active:scale-90 duration-300 ease-spring" 
                         style={{ backgroundColor: c }} 
                     />
                 ))}
@@ -477,22 +508,22 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
       
       {showDictationModal && (
           <div className="fixed inset-0 z-[120] flex items-end justify-center sm:items-center bg-black/40 backdrop-blur-sm animate-fade-in">
-              <div className="bg-surface w-full max-w-md mx-auto sm:rounded-3xl rounded-t-3xl shadow-2xl p-6 animate-slide-up border border-white/10 flex flex-col gap-4">
+              <div className="bg-surface w-full max-w-md mx-auto sm:rounded-3xl rounded-t-3xl shadow-2xl p-8 animate-slide-up border border-white/5 flex flex-col gap-6">
                   <div className="flex items-center justify-between">
-                      <h3 className="font-bold text-lg flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${isDictating ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`}></div>
-                          {isDictating ? 'Listening...' : 'Dictation Stopped'}
+                      <h3 className="font-bold text-xl flex items-center gap-3">
+                          <div className={`w-3 h-3 rounded-full ${isDictating ? 'bg-red-500 animate-pulse ring-4 ring-red-500/20' : 'bg-gray-400'}`}></div>
+                          {isDictating ? 'Transcribing...' : 'Dictation Ready'}
                       </h3>
-                      <button onClick={stopDictation} className="p-2 bg-red-500/10 text-red-500 rounded-full hover:bg-red-500/20"><MicOff size={20}/></button>
+                      <button onClick={stopDictation} className="p-2.5 bg-red-500/10 text-red-500 rounded-full hover:bg-red-500/20 active:scale-90 transition-all"><MicOff size={22}/></button>
                   </div>
                   
-                  <div className="bg-black/5 dark:bg-white/5 p-4 rounded-xl min-h-[100px] max-h-[200px] overflow-y-auto text-lg italic opacity-80">
-                      {dictatedText || "Speak now..."}
+                  <div className="bg-black/5 dark:bg-white/5 p-6 rounded-2xl min-h-[120px] max-h-[250px] overflow-y-auto text-xl font-light italic opacity-90 leading-relaxed border border-black/5">
+                      {dictatedText || "The mic is active. Start speaking..."}
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-3">
                       <Button variant="ghost" className="flex-1" onClick={() => handleDictationAction('discard')}>Discard</Button>
-                      <Button onClick={() => handleDictationAction('insert')} className="flex-1 gap-2"><Check size={16}/> Insert</Button>
+                      <Button onClick={() => handleDictationAction('insert')} className="flex-1 gap-2 h-14 text-lg"><Check size={20}/> Use Text</Button>
                   </div>
               </div>
           </div>
@@ -513,9 +544,9 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
 const MobileMenuItem = ({ icon, label, onClick }: { icon: React.ReactNode, label: string, onClick: () => void }) => (
     <button 
         onClick={onClick}
-        className="w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors hover:bg-black/5 dark:hover:bg-white/5 text-surface-fg/80"
+        className="w-full flex items-center gap-4 p-4 rounded-xl text-left transition-all hover:bg-black/5 dark:hover:bg-white/5 text-surface-fg/80 active:scale-[0.98]"
     >
-        <span>{icon}</span>
-        <span className="font-medium">{label}</span>
+        <span className="opacity-70">{icon}</span>
+        <span className="font-semibold text-sm">{label}</span>
     </button>
 );
