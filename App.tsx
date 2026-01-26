@@ -10,7 +10,6 @@ import { Dashboard } from './components/Dashboard';
 import { Editor } from './components/Editor';
 import { Sidebar } from './components/Sidebar';
 import { Settings } from './components/Settings';
-import { History } from './components/History';
 import { ConfirmationModal } from './components/ConfirmationModal';
 import { Onboarding } from './components/Onboarding';
 import { DonationPrompt } from './components/DonationPrompt';
@@ -51,18 +50,15 @@ const App: React.FC = () => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
     window.addEventListener('resize', handleResize);
     
-    // Check first time visit
     const visited = localStorage.getItem('scripta_visited');
     if (!visited) {
         setShowOnboarding(true);
     } else {
-        // Check Donation Prompt (Every 5 days)
         const lastPrompt = localStorage.getItem('last_donation_prompt');
         const now = new Date().getTime();
         const fiveDays = 5 * 24 * 60 * 60 * 1000;
         
         if (!lastPrompt || now - parseInt(lastPrompt) > fiveDays) {
-            // Delay prompt slightly to not block initial load
             setTimeout(() => setShowDonationPrompt(true), 2000);
         }
     }
@@ -143,7 +139,7 @@ const App: React.FC = () => {
       content: initialContent,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      wordCount: initialContent.split(/\s+/).length,
+      wordCount: initialContent ? initialContent.trim().split(/\s+/).length : 0,
       linkedActivityIds: [],
       archived: false,
       deleted: false,
@@ -186,7 +182,7 @@ const App: React.FC = () => {
       setConfirmState({
           isOpen: true,
           title: 'Delete All Data?',
-          message: 'CRITICAL: This will permanently delete ALL your activities, history, and settings. This action CANNOT be undone.',
+          message: 'CRITICAL: This will permanently delete ALL your activities and settings. This action CANNOT be undone.',
           isDangerous: true,
           confirmLabel: 'Delete Everything',
           onConfirm: async () => {
@@ -232,8 +228,6 @@ const App: React.FC = () => {
                   cardDensity={settings.cardDensity}
                   isDarkMode={settings.mode === 'dark'}
                />;
-      case ViewName.History:
-        return <History activities={activities} />;
       case ViewName.Editor:
         return currentActivity ? (
           <Editor 

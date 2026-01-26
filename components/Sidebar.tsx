@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ViewName } from '../types';
-import { LayoutDashboard, Archive, Trash2, Settings, Download, X, LineChart } from 'lucide-react';
+import { LayoutDashboard, Archive, Trash2, Settings, Download, X } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -35,7 +35,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, currentView, 
 
   const menuItems = [
     { icon: <LayoutDashboard size={20} />, label: 'Dashboard', view: ViewName.Dashboard },
-    { icon: <LineChart size={20} />, label: 'Writing History', view: ViewName.History },
     { icon: <Archive size={20} />, label: 'Archive', view: ViewName.Archive },
     { icon: <Trash2 size={20} />, label: 'Trash', view: ViewName.Trash },
     { icon: <Settings size={20} />, label: 'Settings', view: ViewName.Settings },
@@ -47,7 +46,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, currentView, 
 
   return (
     <>
-      {/* Backdrop - Only on Mobile */}
       {isMobile && isOpen && (
         <div 
           className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm transition-opacity duration-500"
@@ -55,9 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, currentView, 
         />
       )}
       
-      {/* Drawer */}
       <div className={drawerClasses}>
-        {/* Header - Themed Background */}
         <div className="p-6 flex items-center justify-between bg-primary/5">
           <h2 className="font-display text-2xl font-bold text-primary tracking-tight">Scripta</h2>
           {isMobile && (

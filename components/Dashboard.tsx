@@ -4,7 +4,7 @@ import { Search, Plus, Calendar, FileText, Trash2, Archive, RefreshCw, Copy, Pal
 import { Button } from './Button';
 import { ConfirmationModal } from './ConfirmationModal';
 import { CARD_COLORS } from '../constants';
-import { getAdaptiveColor } from '../utils/colors.ts';
+import { getAdaptiveColor } from '../utils/colors';
 
 interface DashboardProps {
   activities: Activity[];

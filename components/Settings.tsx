@@ -3,7 +3,7 @@ import { AppSettings, ThemeName } from '../types';
 import { Button } from './Button';
 import { Toggle } from './Toggle';
 import { Moon, Sun, Trash, Type, Smartphone, Database, Download, Upload, Shield, Heart, HelpCircle, ExternalLink, FileText } from 'lucide-react';
-import { exportData, parseImportFile } from '../utils/dataTransfer.ts';
+import { exportData, parseImportFile } from '../utils/dataTransfer';
 import { dbService } from '../services/db';
 
 interface SettingsProps {

@@ -28,7 +28,7 @@ export interface AppSettings {
   autoSave: boolean;
   reduceMotion: boolean;
   showWordCount: boolean;
-  fontScale: number; // 14px to 20px base
+  fontScale: number;
   cardDensity: 'comfortable' | 'compact';
   enableHaptics: boolean;
 }
@@ -39,9 +39,4 @@ export enum ViewName {
   Settings = 'Settings',
   Archive = 'Archive',
   Trash = 'Trash',
-  History = 'History',
-}
-
-export interface AIResponse {
-  text: string;
 }
