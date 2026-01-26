@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Button } from './Button';
-import { CloudOff, PenTool, ArrowRight, Check } from 'lucide-react';
+import { CloudOff, PenTool, ArrowRight, Check, BarChart3 } from 'lucide-react';
 
 interface OnboardingProps {
-  onComplete: () => void;
+  onComplete: (analyticsEnabled: boolean) => void;
 }
 
 export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
   const [step, setStep] = useState(0);
+  const [analyticsConsent, setAnalyticsConsent] = useState(false);
 
   const steps = [
     {
@@ -19,6 +20,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
       icon: <CloudOff size={48} className="text-primary" />,
       title: "Offline First",
       description: "Your data stays on your device. No accounts, no tracking, no cloud sync required.",
+    },
+    {
+      icon: <BarChart3 size={48} className="text-primary" />,
+      title: "Anonymous Analytics",
+      description: "Help us improve Scripta by sharing completely anonymous usage data. You can change this later in Settings.",
+      isChoice: true
     }
   ];
 
@@ -26,7 +33,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     if (step < steps.length - 1) {
       setStep(step + 1);
     } else {
-      onComplete();
+      onComplete(analyticsConsent);
     }
   };
 
@@ -49,13 +56,27 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
         </div>
 
         <div className="pt-8">
-            <Button onClick={handleNext} className="w-full text-lg py-4 shadow-xl shadow-primary/20">
-                {step === steps.length - 1 ? (
-                    <span className="flex items-center gap-2">Get Started <Check size={20}/></span>
-                ) : (
+            {steps[step].isChoice ? (
+                <div className="flex gap-4">
+                    <Button 
+                        variant="secondary" 
+                        onClick={() => { setAnalyticsConsent(false); setTimeout(() => onComplete(false), 200); }} 
+                        className="flex-1 py-4"
+                    >
+                        Opt Out
+                    </Button>
+                    <Button 
+                        onClick={() => { setAnalyticsConsent(true); setTimeout(() => onComplete(true), 200); }} 
+                        className="flex-1 py-4 shadow-xl shadow-primary/20"
+                    >
+                        Enable
+                    </Button>
+                </div>
+            ) : (
+                <Button onClick={handleNext} className="w-full text-lg py-4 shadow-xl shadow-primary/20">
                     <span className="flex items-center gap-2">Next <ArrowRight size={20}/></span>
-                )}
-            </Button>
+                </Button>
+            )}
             
             <div className="flex justify-center gap-2 mt-6">
                 {steps.map((_, i) => (

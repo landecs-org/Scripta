@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { AppSettings, ThemeName } from '../types';
 import { Button } from './Button';
 import { Toggle } from './Toggle';
-import { Moon, Sun, Trash, Type, Smartphone, Database, Download, Upload, Shield, Heart, HelpCircle, ExternalLink, FileText } from 'lucide-react';
+import { Moon, Sun, Trash, Type, Smartphone, Database, Download, Upload, Shield, Heart, HelpCircle, ExternalLink, FileText, BarChart3 } from 'lucide-react';
 import { exportData, parseImportFile } from '../utils/dataTransfer';
 import { dbService } from '../services/db';
 
@@ -151,9 +151,26 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
         </div>
       </section>
 
+      {/* Privacy */}
+      <section className="mb-8">
+        <h2 className="text-lg font-bold mb-4 flex items-center gap-2 opacity-70"><Shield size={18}/> Privacy</h2>
+        <div className="bg-surface rounded-2xl p-6 border border-black/5 dark:border-white/5 shadow-sm space-y-6">
+            <div className="flex items-center justify-between">
+                 <div>
+                    <p className="font-medium flex items-center gap-2"><BarChart3 size={16}/> Anonymous Analytics</p>
+                    <p className="text-sm opacity-50">Allow Scripta to collect anonymous usage statistics to improve the app.</p>
+                 </div>
+                 <Toggle 
+                    checked={settings.enableAnalytics} 
+                    onChange={(checked) => onUpdateSettings({...settings, enableAnalytics: checked})}
+                 />
+            </div>
+        </div>
+      </section>
+
       {/* About Scripta */}
       <section className="mb-8">
-         <h2 className="text-lg font-bold mb-4 flex items-center gap-2 opacity-70"><Shield size={18}/> About Scripta</h2>
+         <h2 className="text-lg font-bold mb-4 flex items-center gap-2 opacity-70"><HelpCircle size={18}/> About Scripta</h2>
          <div className="bg-surface rounded-2xl p-6 border border-black/5 dark:border-white/5 shadow-sm space-y-4">
             <a href="https://scripta.landecs.org/about" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between group p-2 hover:bg-background rounded-lg transition-colors">
                 <div className="flex items-center gap-3">

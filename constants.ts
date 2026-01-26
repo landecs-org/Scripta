@@ -108,6 +108,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fontScale: 16,
   cardDensity: 'comfortable',
   enableHaptics: true,
+  enableAnalytics: false,
 };
 
 export const CARD_COLORS = [

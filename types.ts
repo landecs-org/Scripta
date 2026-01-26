@@ -31,6 +31,7 @@ export interface AppSettings {
   fontScale: number;
   cardDensity: 'comfortable' | 'compact';
   enableHaptics: boolean;
+  enableAnalytics: boolean;
 }
 
 export enum ViewName {

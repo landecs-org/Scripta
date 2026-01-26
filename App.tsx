@@ -14,6 +14,7 @@ import { ConfirmationModal } from './components/ConfirmationModal';
 import { Onboarding } from './components/Onboarding';
 import { DonationPrompt } from './components/DonationPrompt';
 import { Menu } from 'lucide-react';
+import { Analytics } from "@vercel/analytics/react";
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewName>(ViewName.Dashboard);
@@ -66,7 +67,8 @@ const App: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const completeOnboarding = () => {
+  const completeOnboarding = (analyticsEnabled: boolean) => {
+      setSettings(prev => ({ ...prev, enableAnalytics: analyticsEnabled }));
       localStorage.setItem('scripta_visited', 'true');
       setShowOnboarding(false);
   };
@@ -248,6 +250,8 @@ const App: React.FC = () => {
 
   return (
     <div className="h-full flex relative overflow-hidden bg-background text-surface-fg transition-colors duration-300">
+        
+        {settings.enableAnalytics && <Analytics />}
         
         {showOnboarding && <Onboarding onComplete={completeOnboarding} />}
         {showDonationPrompt && !showOnboarding && <DonationPrompt onClose={closeDonationPrompt} />}
