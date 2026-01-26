@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Activity } from '../types';
-import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, X, BarChart2, Check, ExternalLink, Share2, Copy, FileText, Download, Mic, MicOff, Maximize2, Minimize2, MoreHorizontal, Save, Clock, Slash, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, X, BarChart2, Check, ExternalLink, Share2, Copy, FileText, Download, Mic, MicOff, Maximize2, Minimize2, MoreVertical, Save, Clock, Slash, ArrowRight, Bold, Italic, Hash, List, CheckSquare, Type } from 'lucide-react';
 import { dbService } from '../services/db';
 import { Button } from './Button';
 import { ActivityPicker } from './ActivityPicker';
@@ -30,11 +30,13 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
   const [isSaving, setIsSaving] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showFormatBar, setShowFormatBar] = useState(false);
   
   const [isDictating, setIsDictating] = useState(false);
   const [showDictationModal, setShowDictationModal] = useState(false);
   const [dictatedText, setDictatedText] = useState('');
   const recognitionRef = useRef<any>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showLinkPicker, setShowLinkPicker] = useState(false);
@@ -175,6 +177,41 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
     }
   };
 
+  const insertFormat = (syntax: string, type: 'wrap' | 'block') => {
+      vibrate(5);
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const currentText = textarea.value;
+      const before = currentText.substring(0, start);
+      const selection = currentText.substring(start, end);
+      const after = currentText.substring(end);
+
+      let newText = '';
+      let newCursorPos = 0;
+
+      if (type === 'wrap') {
+          newText = `${before}${syntax}${selection}${syntax}${after}`;
+          newCursorPos = start + syntax.length + selection.length + syntax.length; 
+          if (selection.length === 0) newCursorPos = start + syntax.length;
+      } else {
+          // Check if we are at start of line
+          const lastNewLine = before.lastIndexOf('\n');
+          const isStartOfLine = lastNewLine === before.length - 1 || start === 0;
+          const prefix = isStartOfLine ? '' : '\n';
+          newText = `${before}${prefix}${syntax} ${selection}${after}`;
+          newCursorPos = newText.length - after.length;
+      }
+
+      setContent(newText);
+      setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+  };
+
   const startDictation = () => {
       if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
           alert('Voice dictation is not supported in this browser.');
@@ -262,15 +299,6 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
       );
   };
 
-  const updateLinkedActivity = async (linkedId: string, newContent: string) => {
-      setLinkedActivities(prev => prev.map(a => a.id === linkedId ? { ...a, content: newContent } : a));
-      const act = linkedActivities.find(a => a.id === linkedId);
-      if (act) {
-          // Real-time background sync for linked activities
-          await dbService.saveActivity({ ...act, content: newContent, updatedAt: new Date().toISOString() });
-      }
-  };
-
   const toggleLinkCollapse = (id: string) => { vibrate(5); setCollapsedLinks(prev => ({ ...prev, [id]: !prev[id] })); };
 
   return (
@@ -296,7 +324,9 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                 </div>
               )}
               
+              {/* Desktop Toolbar */}
               <div className="hidden md:flex items-center gap-1">
+                  <button onClick={() => setShowFormatBar(!showFormatBar)} className={`p-2 rounded-full text-surface-fg/70 active:scale-90 duration-200 ${showFormatBar ? 'bg-black/5 text-primary' : 'hover:bg-black/5'}`} title="Formatting"><Type size={20} /></button>
                   <button onClick={startDictation} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Dictate"><Mic size={20} /></button>
                   <button onClick={() => { vibrate(10); setShowColorPicker(!showColorPicker); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Change Color"><Palette size={20} /></button>
                   <button onClick={() => { vibrate(10); setShowLinkPicker(true); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Link Thought"><LinkIcon size={20} /></button>
@@ -305,20 +335,25 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
 
               <button onClick={toggleFocusMode} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Focus Mode"><Maximize2 size={20} /></button>
 
+              {/* Mobile Menu Button */}
               <div className="md:hidden relative">
                   <button 
                     onClick={(e) => { e.stopPropagation(); setShowMobileMenu(!showMobileMenu); }} 
                     className={`p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200 ${showMobileMenu ? 'bg-black/5' : ''}`}
                   >
-                      <MoreHorizontal size={20} />
+                      <MoreVertical size={20} />
                   </button>
                   
                   {showMobileMenu && (
-                      <div className="absolute top-12 right-0 bg-surface rounded-xl shadow-xl border border-black/10 w-48 animate-scale-in origin-top-right overflow-hidden z-30 flex flex-col p-1">
+                      <div className="absolute top-12 right-0 bg-surface rounded-xl shadow-xl border border-black/10 w-56 animate-scale-in origin-top-right overflow-hidden z-30 flex flex-col p-2">
+                          <MobileMenuItem icon={<Type size={18}/>} label={showFormatBar ? "Hide Formatting" : "Show Formatting"} onClick={() => { setShowFormatBar(!showFormatBar); setShowMobileMenu(false); }} />
+                          <div className="h-px bg-black/5 dark:bg-white/5 my-1 mx-2"></div>
                           <MobileMenuItem icon={<Mic size={18}/>} label="Dictate" onClick={startDictation} />
-                          <MobileMenuItem icon={<Palette size={18}/>} label="Color" onClick={() => setShowColorPicker(true)} />
+                          <MobileMenuItem icon={<Palette size={18}/>} label="Color Theme" onClick={() => setShowColorPicker(true)} />
                           <MobileMenuItem icon={<LinkIcon size={18}/>} label="Link Activity" onClick={() => setShowLinkPicker(true)} />
-                          <MobileMenuItem icon={<Share2 size={18}/>} label="Export" onClick={() => setShowExportMenu(true)} />
+                          <div className="h-px bg-black/5 dark:bg-white/5 my-1 mx-2"></div>
+                          <MobileMenuItem icon={<Share2 size={18}/>} label="Export & Share" onClick={() => setShowExportMenu(true)} />
+                          <MobileMenuItem icon={<BarChart2 size={18}/>} label="View Stats" onClick={() => setShowAnalytics(true)} />
                       </div>
                   )}
               </div>
@@ -345,6 +380,19 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
       )}
 
       <div className={`flex-1 overflow-y-auto w-full no-scrollbar scroll-smooth print:overflow-visible transition-all duration-700 ease-fluid ${focusMode ? 'px-[5vw] pt-24 pb-32 flex flex-col items-center' : 'px-6 py-8 max-w-3xl mx-auto pb-32'}`}>
+        
+        {/* Markdown Toolbar */}
+        {showFormatBar && (
+            <div className={`w-full max-w-2xl mx-auto mb-6 flex items-center justify-center gap-2 sm:gap-4 p-2 rounded-xl bg-black/5 dark:bg-white/5 animate-slide-up ${focusMode ? 'mb-12' : ''}`}>
+                <button onClick={() => insertFormat('**', 'wrap')} className="p-2 hover:bg-background rounded-lg transition-colors text-surface-fg/70 hover:text-primary"><Bold size={18}/></button>
+                <button onClick={() => insertFormat('_', 'wrap')} className="p-2 hover:bg-background rounded-lg transition-colors text-surface-fg/70 hover:text-primary"><Italic size={18}/></button>
+                <div className="w-px h-6 bg-surface-fg/10"></div>
+                <button onClick={() => insertFormat('#', 'block')} className="p-2 hover:bg-background rounded-lg transition-colors text-surface-fg/70 hover:text-primary"><Hash size={18}/></button>
+                <button onClick={() => insertFormat('-', 'block')} className="p-2 hover:bg-background rounded-lg transition-colors text-surface-fg/70 hover:text-primary"><List size={18}/></button>
+                <button onClick={() => insertFormat('[ ]', 'block')} className="p-2 hover:bg-background rounded-lg transition-colors text-surface-fg/70 hover:text-primary"><CheckSquare size={18}/></button>
+            </div>
+        )}
+
         <input 
           type="text" 
           value={title}
@@ -364,18 +412,19 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
 
         <div className={`transition-all duration-700 ease-fluid overflow-hidden w-full ${focusMode ? 'max-w-2xl' : ''} ${contentVisible || focusMode ? 'opacity-100 max-h-[5000px]' : 'opacity-0 max-h-0'} print:opacity-100 print:max-h-none`}>
              <textarea 
+               ref={textareaRef}
                value={content}
                onChange={(e) => setContent(e.target.value)}
                onPaste={handlePaste}
                placeholder="Start writing..."
-               className={`w-full bg-transparent resize-none outline-none font-light text-surface-fg placeholder:text-surface-fg/20 transition-all duration-500 ease-fluid ${focusMode ? 'text-xl sm:text-2xl leading-[2] tracking-wide min-h-[80vh]' : 'text-lg leading-loose min-h-[50vh]'}`}
+               className={`w-full bg-transparent resize-none outline-none font-light text-surface-fg placeholder:text-surface-fg/20 transition-all duration-500 ease-fluid pb-[50vh] ${focusMode ? 'text-xl sm:text-2xl leading-[2] tracking-wide min-h-[80vh]' : 'text-lg leading-loose min-h-[50vh]'}`}
                spellCheck="false"
              />
         </div>
 
         {/* Linked Activities Section */}
         {!focusMode && linkedActivities.length > 0 && (
-            <div className="mt-20 pt-12 relative print:hidden w-full">
+            <div className="mt-12 pt-12 relative print:hidden w-full">
                 <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-black/10 dark:via-white/10 to-transparent"></div>
                 <div className="flex items-center justify-between mb-8 px-2">
                     <h3 className="text-xs font-bold uppercase tracking-widest opacity-40 flex items-center gap-2">
@@ -390,63 +439,49 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                     </button>
                 </div>
                 
-                <div className="space-y-12">
+                <div className="space-y-6">
                     {linkedActivities.map(link => (
                         <div key={link.id} className="relative group transition-all duration-500 ease-spring">
                             {/* Connection line */}
                             <div className="absolute -left-5 top-0 bottom-0 w-[2px] bg-gradient-to-b from-primary/30 via-primary/5 to-transparent border-l-2 border-dashed border-primary/20"></div>
                             
                             <div className="pl-6 transition-all duration-300">
-                                <div className="flex items-center justify-between mb-4 bg-primary/5 rounded-xl p-3 pr-5 border border-primary/10">
+                                <div className="bg-surface/60 backdrop-blur-sm border border-black/5 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:border-primary/20 transition-all">
                                     <div 
-                                      className="flex items-center gap-3 cursor-pointer select-none text-primary font-bold font-display flex-1 group"
+                                      className="flex items-center justify-between p-4 bg-primary/5 cursor-pointer select-none"
                                       onClick={() => toggleLinkCollapse(link.id)}
                                     >
-                                        <div className="p-1.5 bg-background rounded-lg shadow-sm transform transition-all duration-300 group-hover:scale-110">
+                                        <div className="flex items-center gap-3 font-bold font-display text-primary flex-1">
                                             <LinkIcon size={14} />
+                                            <span className="truncate max-w-[180px] sm:max-w-xs">{link.title || 'Untitled'}</span>
                                         </div>
-                                        <span className="truncate max-w-[200px] sm:max-w-[300px] group-hover:underline decoration-primary/30 underline-offset-4">{link.title || 'Untitled'}</span>
-                                        <div className="transform transition-transform duration-300 opacity-40">
-                                            {collapsedLinks[link.id] ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                                        <div className="flex items-center gap-2">
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); handleSwitchToLinked(link); }}
+                                                className="bg-primary text-primary-fg text-[10px] uppercase font-bold px-3 py-1.5 rounded-lg hover:shadow-lg hover:shadow-primary/20 transition-all active:scale-95 flex items-center gap-1"
+                                            >
+                                                Open <ArrowRight size={10} />
+                                            </button>
+                                            <div className="transform transition-transform duration-300 opacity-40">
+                                                {collapsedLinks[link.id] ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                                            </div>
                                         </div>
                                     </div>
                                     
-                                    <div className="flex items-center gap-2">
-                                        <button 
+                                    <div className={`transition-all duration-500 ease-fluid ${collapsedLinks[link.id] ? 'max-h-0 opacity-0' : 'max-h-[300px] opacity-100'}`}>
+                                        <div 
+                                            className="p-4 text-sm font-light opacity-80 leading-relaxed cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                                             onClick={() => handleSwitchToLinked(link)}
-                                            className="flex items-center gap-2 bg-primary text-primary-fg text-[10px] uppercase font-bold px-3 py-1.5 rounded-lg hover:shadow-lg hover:shadow-primary/20 transition-all active:scale-95"
-                                            title="Smart Swap: Move current text to links and open this one"
                                         >
-                                            <span className="hidden sm:inline">Open Activity</span>
-                                            <ArrowRight size={12} />
-                                        </button>
-                                        <button 
-                                          onClick={() => handleUnlink(link.id)} 
-                                          className="text-primary opacity-30 hover:opacity-100 p-2 hover:bg-red-500/10 hover:text-red-500 rounded-lg transition-all"
-                                          title="Remove Link"
-                                        >
-                                            <X size={16} />
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                <div className={`overflow-hidden transition-all duration-700 ease-fluid ${collapsedLinks[link.id] ? 'max-h-0 opacity-0 scale-95' : 'max-h-[800px] opacity-100 scale-100'}`}>
-                                    <div className="bg-surface/40 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-black/5 dark:border-white/5 hover:border-primary/20 transition-all group/card">
-                                        <div className="mb-2 text-xs opacity-50 uppercase tracking-widest font-bold">Snippet</div>
-                                        <textarea 
-                                            value={link.content}
-                                            onChange={(e) => updateLinkedActivity(link.id, e.target.value)}
-                                            className="w-full bg-transparent resize-none outline-none text-base opacity-90 font-light leading-relaxed min-h-[100px]"
-                                            placeholder="Write something in this linked thought..."
-                                        />
-                                        <div className="flex items-center justify-between mt-4 pt-4 border-t border-black/5 dark:border-white/5 opacity-0 group-hover/card:opacity-100 transition-opacity">
-                                            <div className="text-[10px] uppercase tracking-wider font-bold opacity-30 flex items-center gap-1">
-                                                <ExternalLink size={10} /> Bidirectional Bridge
-                                            </div>
-                                            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold text-green-500">
-                                                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-                                                Live Synced
-                                            </div>
+                                            <p className="line-clamp-4">{link.content || "No content..."}</p>
+                                        </div>
+                                        <div className="p-2 border-t border-black/5 dark:border-white/5 flex justify-end">
+                                            <button 
+                                                onClick={() => handleUnlink(link.id)} 
+                                                className="text-[10px] uppercase font-bold text-red-500 opacity-60 hover:opacity-100 px-3 py-1 hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-1"
+                                            >
+                                                <X size={10} /> Unlink
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -543,7 +578,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
 const MobileMenuItem = ({ icon, label, onClick }: { icon: React.ReactNode, label: string, onClick: () => void }) => (
     <button 
         onClick={onClick}
-        className="w-full flex items-center gap-4 p-4 rounded-xl text-left transition-all hover:bg-black/5 dark:hover:bg-white/5 text-surface-fg/80 active:scale-[0.98]"
+        className="w-full flex items-center gap-4 p-3 rounded-xl text-left transition-all hover:bg-black/5 dark:hover:bg-white/5 text-surface-fg/80 active:scale-[0.98]"
     >
         <span className="opacity-70">{icon}</span>
         <span className="font-semibold text-sm">{label}</span>
