@@ -134,23 +134,11 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
     setConfirmState({ isOpen: true, title, message, isDangerous, onConfirm });
   };
 
-  const handleSwitchToLinked = async (targetActivity: Activity) => {
-      vibrate(15);
-      await forceSave();
-
-      const targetLinks = targetActivity.linkedActivityIds || [];
-      
-      if (!targetLinks.includes(activity.id)) {
-          const newLinks = [activity.id, ...targetLinks.filter(id => id !== activity.id)].slice(0, 5);
-          const updatedTarget = {
-              ...targetActivity,
-              linkedActivityIds: newLinks,
-              updatedAt: new Date().toISOString()
-          };
-          await dbService.saveActivity(updatedTarget);
-          onSwitchActivity(updatedTarget);
-      } else {
-          onSwitchActivity(targetActivity);
+  const updateLinkedActivity = async (linkedId: string, newContent: string) => {
+      setLinkedActivities(prev => prev.map(a => a.id === linkedId ? { ...a, content: newContent } : a));
+      const act = linkedActivities.find(a => a.id === linkedId);
+      if (act) {
+          await dbService.saveActivity({ ...act, content: newContent, updatedAt: new Date().toISOString() });
       }
   };
 
@@ -456,26 +444,21 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                                             <span className="truncate max-w-[180px] sm:max-w-xs">{link.title || 'Untitled'}</span>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleSwitchToLinked(link); }}
-                                                className="bg-primary text-primary-fg text-[10px] uppercase font-bold px-3 py-1.5 rounded-lg hover:shadow-lg hover:shadow-primary/20 transition-all active:scale-95 flex items-center gap-1"
-                                            >
-                                                Open <ArrowRight size={10} />
-                                            </button>
                                             <div className="transform transition-transform duration-300 opacity-40">
                                                 {collapsedLinks[link.id] ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                                             </div>
                                         </div>
                                     </div>
                                     
-                                    <div className={`transition-all duration-500 ease-fluid ${collapsedLinks[link.id] ? 'max-h-0 opacity-0' : 'max-h-[300px] opacity-100'}`}>
-                                        <div 
-                                            className="p-4 text-sm font-light opacity-80 leading-relaxed cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                                            onClick={() => handleSwitchToLinked(link)}
-                                        >
-                                            <p className="line-clamp-4">{link.content || "No content..."}</p>
-                                        </div>
-                                        <div className="p-2 border-t border-black/5 dark:border-white/5 flex justify-end">
+                                    <div className={`transition-all duration-500 ease-fluid ${collapsedLinks[link.id] ? 'max-h-0 opacity-0' : 'max-h-[600px] opacity-100'}`}>
+                                        <textarea 
+                                            value={link.content}
+                                            onChange={(e) => updateLinkedActivity(link.id, e.target.value)}
+                                            className="w-full bg-transparent resize-none outline-none text-sm font-light leading-relaxed min-h-[120px] p-4 placeholder:opacity-30 focus:bg-white/5 transition-colors"
+                                            placeholder="Write in this linked thought..."
+                                        />
+                                        <div className="p-2 border-t border-black/5 dark:border-white/5 flex justify-between items-center bg-black/5 dark:bg-white/5">
+                                            <span className="text-[10px] uppercase font-bold tracking-wider opacity-30 pl-2">Live Edit</span>
                                             <button 
                                                 onClick={() => handleUnlink(link.id)} 
                                                 className="text-[10px] uppercase font-bold text-red-500 opacity-60 hover:opacity-100 px-3 py-1 hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-1"
