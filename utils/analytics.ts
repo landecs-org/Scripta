@@ -1,4 +1,3 @@
-import { stripMarkdown } from './markdown';
 
 export interface TextStats {
   words: number;
@@ -15,8 +14,8 @@ export interface TextStats {
 }
 
 export const analyzeText = (text: string): TextStats => {
-  // Strip markdown for accurate content analysis
-  const cleanText = stripMarkdown(text || '').trim();
+  // Content is now always plain text, so no stripping needed
+  const cleanText = (text || '').trim();
   
   if (!cleanText) {
     return {

@@ -1,3 +1,4 @@
+
 import { Activity } from '../types';
 
 export const exportData = (activities: Activity[], filename = 'scripta-backup') => {
@@ -13,15 +14,10 @@ export const exportData = (activities: Activity[], filename = 'scripta-backup') 
   URL.revokeObjectURL(url);
 };
 
-export const exportActivity = (activity: Activity, format: 'txt' | 'md') => {
-  let content = '';
-  if (format === 'md') {
-    content = `# ${activity.title}\n\n${activity.content}`;
-  } else {
-    content = `${activity.title}\n\n${activity.content}`;
-  }
+export const exportActivity = (activity: Activity, format: 'txt') => {
+  const content = `${activity.title}\n\n${activity.content}`;
   
-  const type = format === 'md' ? 'text/markdown' : 'text/plain';
+  const type = 'text/plain';
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Activity } from '../types';
-import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, BarChart2, Share2, Copy, FileText, Download, Maximize2, Minimize2, MoreVertical, Clock, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, BarChart2, Share2, Copy, FileText, Maximize2, Minimize2, MoreVertical, Clock, ArrowRight } from 'lucide-react';
 import { dbService } from '../services/db';
 import { ActivityPicker } from './ActivityPicker';
 import { AnalyticsSheet } from './AnalyticsSheet';
@@ -62,55 +62,19 @@ const AutoTextarea = ({ value, onChange, onKeyDown, autoFocus, placeholder, clas
     )
 }
 
-// Markdown Renderer for a single block
-const MarkdownBlock: React.FC<{ content: string }> = ({ content }) => {
+// Plain Text Renderer for a single block
+const TextBlock: React.FC<{ content: string }> = ({ content }) => {
     if (!content) return <div className="h-[1.5em] w-full opacity-0 pointer-events-none">.</div>; // Spacer
-
-    const renderContent = (text: string) => {
-        let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        
-        // Images
-        html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-xl my-3 max-w-full shadow-lg hover:scale-[1.01] transition-transform duration-500 ease-spring" />');
-
-        // Headers
-        if (html.startsWith('# ')) return `<h1 class="text-3xl sm:text-4xl font-bold mt-6 mb-3 tracking-tight text-primary">${html.substring(2)}</h1>`;
-        if (html.startsWith('## ')) return `<h2 class="text-2xl sm:text-3xl font-bold mt-4 mb-2 tracking-tight opacity-90">${html.substring(3)}</h2>`;
-        if (html.startsWith('### ')) return `<h3 class="text-xl sm:text-2xl font-bold mt-3 mb-1 tracking-tight opacity-80">${html.substring(4)}</h3>`;
-
-        // Blockquotes
-        if (html.startsWith('> ')) return `<blockquote class="border-l-4 border-primary/50 pl-4 italic opacity-70 my-3 py-1 bg-black/5 dark:bg-white/5 rounded-r-lg">${html.substring(2)}</blockquote>`;
-
-        // Lists - Improved indentation
-        if (html.match(/^\s*-\s+/)) return `<div class="flex gap-3 my-1 ml-1 leading-loose"><span class="text-primary font-bold select-none">&bull;</span><span>${html.replace(/^\s*-\s+/, '')}</span></div>`;
-        if (html.match(/^\s*\d+\.\s+/)) return `<div class="flex gap-3 my-1 ml-1 leading-loose"><span class="text-primary font-mono font-bold opacity-60 select-none">${html.match(/^\s*(\d+\.)\s+/)?.[1]}</span><span>${html.replace(/^\s*\d+\.\s+/, '')}</span></div>`;
-
-        // Checkboxes - Functional
-        if (html.match(/^\s*\[ \]\s+/)) return `<div class="flex items-start gap-3 my-1 group cursor-pointer opacity-80 hover:opacity-100 transition-opacity" data-action="toggle-check"><div class="w-5 h-5 mt-1 border-2 border-surface-fg/30 rounded-md group-hover:border-primary transition-colors pointer-events-none flex-shrink-0"></div><span class="decoration-surface-fg/30 pointer-events-none leading-loose">${html.replace(/^\s*\[ \]\s+/, '')}</span></div>`;
-        if (html.match(/^\s*\[x\]\s+/)) return `<div class="flex items-start gap-3 my-1 group cursor-pointer" data-action="toggle-uncheck"><div class="w-5 h-5 mt-1 bg-primary text-white flex items-center justify-center rounded-md shadow-sm pointer-events-none flex-shrink-0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><span class="opacity-40 line-through decoration-2 pointer-events-none leading-loose">${html.replace(/^\s*\[x\]\s+/, '')}</span></div>`;
-        
-        // Horizontal Rule
-        if (html.match(/^---$/)) return `<hr class="border-t-2 border-black/5 dark:border-white/5 my-6"/>`;
-
-        // Inline styles
-        html = html.replace(/`([^`]+)`/g, '<code class="bg-primary/10 text-primary px-1.5 py-0.5 rounded-md font-mono text-[0.9em] mx-0.5">$1</code>');
-        html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-primary/90">$1</strong>');
-        html = html.replace(/__(.*?)__/g, '<strong class="font-bold text-primary/90">$1</strong>');
-        html = html.replace(/\*(.*?)\*/g, '<em class="italic opacity-80">$1</em>');
-        html = html.replace(/_(.*?)_/g, '<em class="italic opacity-80">$1</em>');
-        html = html.replace(/~~(.*?)~~/g, '<del class="opacity-50">$1</del>');
-        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary underline decoration-primary/30 hover:decoration-primary transition-all">$1</a>');
-
-        return `<div class="leading-loose min-h-[1.5em]">${html}</div>`;
-    };
-
-    return <div dangerouslySetInnerHTML={{ __html: renderContent(content) }} className="markdown-block break-words" />;
+    return <div className="leading-loose min-h-[1.5em] whitespace-pre-wrap break-words">{content}</div>;
 };
 
 const generateId = () => Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
 
 export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWordCount, allActivities = [], onSwitchActivity }) => {
   const settings = JSON.parse(localStorage.getItem('scripta_settings') || JSON.stringify(DEFAULT_SETTINGS));
-  const isLivePreview = settings.livePreview;
+  
+  // Force block mode (formerly livePreview) as it provides the core experience
+  const isBlockMode = true;
 
   const [title, setTitle] = useState(activity.title);
   
@@ -155,11 +119,11 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
 
   // Sync Blocks to Content string for saving/export
   useEffect(() => {
-      if (isLivePreview) {
+      if (isBlockMode) {
           const joined = blocks.map(b => b.content).join('\n');
           if (joined !== content) setContent(joined);
       }
-  }, [blocks, isLivePreview]);
+  }, [blocks, isBlockMode]);
 
   // Sync Content string to Blocks (if external change)
   useEffect(() => {
@@ -211,18 +175,6 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
           newBlocks[index] = { ...newBlocks[index], content: val };
           return newBlocks;
       });
-  };
-
-  const handleCheckboxToggle = (index: number) => {
-      setBlocks(prev => {
-          const newBlocks = [...prev];
-          let c = newBlocks[index].content;
-          if (c.match(/^\s*\[ \]/)) c = c.replace(/^(\s*)\[ \]/, '$1[x]');
-          else if (c.match(/^\s*\[x\]/)) c = c.replace(/^(\s*)\[x\]/, '$1[ ]');
-          newBlocks[index] = { ...newBlocks[index], content: c };
-          return newBlocks;
-      });
-      vibrate();
   };
 
   const handleBlockKeyDown = (index: number, e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -349,7 +301,6 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                  <div className="absolute top-12 right-0 bg-surface rounded-xl shadow-xl border border-black/10 w-48 animate-scale-in z-30 overflow-hidden">
                     <button onClick={() => { navigator.clipboard.writeText(`${title}\n\n${content}`); setShowExportMenu(false); }} className="w-full text-left px-4 py-3 hover:bg-black/5 flex items-center gap-2"><Copy size={16}/> Copy Text</button>
                     <button onClick={() => { exportActivity(activity, 'txt'); setShowExportMenu(false); }} className="w-full text-left px-4 py-3 hover:bg-black/5 flex items-center gap-2"><FileText size={16}/> Save as .txt</button>
-                    <button onClick={() => { exportActivity(activity, 'md'); setShowExportMenu(false); }} className="w-full text-left px-4 py-3 hover:bg-black/5 flex items-center gap-2"><Download size={16}/> Save as .md</button>
                  </div>
               )}
             </div>
@@ -372,7 +323,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
         />
 
         <div className={`w-full transition-all duration-500 ease-fluid ${focusMode ? 'max-w-4xl' : ''}`}>
-            {isLivePreview ? (
+            {isBlockMode ? (
                 <div className="flex flex-col min-h-[60vh] pb-[30vh]">
                     <AnimatePresence initial={false}>
                     {blocks.map((block, idx) => (
@@ -385,13 +336,6 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
                            className={`relative group pl-4 -ml-4 border-l-2 ${focusIndex === idx ? 'border-primary/50 bg-primary/5 sm:bg-transparent sm:border-primary/30' : 'border-transparent'}`}
                            onClick={(e) => { 
-                               // Handle checkbox clicks in preview mode
-                               const target = e.target as HTMLElement;
-                               if (target.closest('[data-action="toggle-check"]') || target.closest('[data-action="toggle-uncheck"]')) {
-                                   e.stopPropagation();
-                                   handleCheckboxToggle(idx);
-                                   return;
-                               }
                                if(focusIndex !== idx) setFocusIndex(idx); 
                            }}
                         >
@@ -413,7 +357,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                                 />
                             ) : (
                                 <div className={`text-lg leading-loose font-light cursor-text ${focusMode ? 'text-xl sm:text-2xl' : ''} ${!block.content ? 'h-6' : ''}`}>
-                                    <MarkdownBlock content={block.content} />
+                                    <TextBlock content={block.content} />
                                 </div>
                             )}
                         </motion.div>
