@@ -1,9 +1,8 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Activity } from '../types';
-import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, X, BarChart2, Check, ExternalLink, Share2, Copy, FileText, Download, Mic, MicOff, Maximize2, Minimize2, MoreVertical, Save, Clock, Slash, ArrowRight, Bold, Italic, Hash, List, CheckSquare, Type, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, X, BarChart2, Share2, Copy, FileText, Download, Maximize2, Minimize2, MoreVertical, Clock, ArrowRight } from 'lucide-react';
 import { dbService } from '../services/db';
-import { Button } from './Button';
 import { ActivityPicker } from './ActivityPicker';
 import { AnalyticsSheet } from './AnalyticsSheet';
 import { ConfirmationModal } from './ConfirmationModal';
@@ -35,9 +34,9 @@ const AutoTextarea = ({ value, onChange, onKeyDown, autoFocus, placeholder, clas
     useEffect(() => {
         if (autoFocus && ref.current) {
             ref.current.focus();
-            // Optional: Move cursor to end if needed, but default behavior is usually fine
-            // const len = ref.current.value.length;
-            // ref.current.setSelectionRange(len, len);
+            // Basic cursor placement at end for better flow when appending
+            // For merging (backspace), explicit cursor management would be needed for perfection, 
+            // but auto-focusing usually places cursor at end which is correct for merge-to-prev.
         }
     }, [autoFocus]);
 
@@ -58,53 +57,63 @@ const AutoTextarea = ({ value, onChange, onKeyDown, autoFocus, placeholder, clas
 
 // Markdown Renderer for a single block
 const MarkdownBlock: React.FC<{ content: string }> = ({ content }) => {
-    if (!content) return <div className="h-6 w-full opacity-0">.</div>; // Spacer for empty lines
+    if (!content) return <div className="h-[1.5em] w-full opacity-0 pointer-events-none">.</div>; // Spacer
 
     const renderContent = (text: string) => {
         let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         
         // Images
-        html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-xl my-2 max-w-full shadow-md" />');
+        html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-xl my-3 max-w-full shadow-lg hover:scale-[1.01] transition-transform duration-500 ease-spring" />');
 
         // Headers
-        if (html.startsWith('# ')) return `<h1 class="text-3xl font-bold mt-4 mb-2">${html.substring(2)}</h1>`;
-        if (html.startsWith('## ')) return `<h2 class="text-2xl font-bold mt-3 mb-2">${html.substring(3)}</h2>`;
-        if (html.startsWith('### ')) return `<h3 class="text-xl font-bold mt-2 mb-1">${html.substring(4)}</h3>`;
+        if (html.startsWith('# ')) return `<h1 class="text-4xl font-bold mt-6 mb-3 tracking-tight text-primary">${html.substring(2)}</h1>`;
+        if (html.startsWith('## ')) return `<h2 class="text-2xl font-bold mt-4 mb-2 tracking-tight opacity-90">${html.substring(3)}</h2>`;
+        if (html.startsWith('### ')) return `<h3 class="text-xl font-bold mt-3 mb-1 tracking-tight opacity-80">${html.substring(4)}</h3>`;
 
         // Blockquotes
-        if (html.startsWith('> ')) return `<blockquote class="border-l-4 border-primary pl-4 italic opacity-80 my-2">${html.substring(2)}</blockquote>`;
+        if (html.startsWith('> ')) return `<blockquote class="border-l-4 border-primary/50 pl-4 italic opacity-70 my-3 py-1 bg-black/5 dark:bg-white/5 rounded-r-lg">${html.substring(2)}</blockquote>`;
 
         // Lists
-        if (html.match(/^\s*-\s+/)) return `<li class="list-disc list-inside ml-4">${html.replace(/^\s*-\s+/, '')}</li>`;
-        if (html.match(/^\s*\d+\.\s+/)) return `<li class="list-decimal list-inside ml-4">${html.replace(/^\s*\d+\.\s+/, '')}</li>`;
+        if (html.match(/^\s*-\s+/)) return `<div class="flex gap-3 my-1 ml-1"><span class="text-primary font-bold">&bull;</span><span>${html.replace(/^\s*-\s+/, '')}</span></div>`;
+        if (html.match(/^\s*\d+\.\s+/)) return `<div class="flex gap-3 my-1 ml-1"><span class="text-primary font-mono font-bold opacity-60">${html.match(/^\s*(\d+\.)\s+/)?.[1]}</span><span>${html.replace(/^\s*\d+\.\s+/, '')}</span></div>`;
 
         // Checkboxes
-        if (html.match(/^\s*\[ \]\s+/)) return `<div class="flex items-center gap-2 my-1"><div class="w-4 h-4 border border-current rounded opacity-50"></div><span>${html.replace(/^\s*\[ \]\s+/, '')}</span></div>`;
-        if (html.match(/^\s*\[x\]\s+/)) return `<div class="flex items-center gap-2 my-1"><div class="w-4 h-4 bg-primary text-white flex items-center justify-center rounded"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4"><polyline points="20 6 9 17 4 12"></polyline></svg></div><span class="opacity-50 line-through">${html.replace(/^\s*\[x\]\s+/, '')}</span></div>`;
+        if (html.match(/^\s*\[ \]\s+/)) return `<div class="flex items-center gap-3 my-1 group cursor-pointer opacity-80 hover:opacity-100 transition-opacity"><div class="w-5 h-5 border-2 border-surface-fg/30 rounded-md group-hover:border-primary transition-colors"></div><span class="decoration-surface-fg/30">${html.replace(/^\s*\[ \]\s+/, '')}</span></div>`;
+        if (html.match(/^\s*\[x\]\s+/)) return `<div class="flex items-center gap-3 my-1 group cursor-pointer"><div class="w-5 h-5 bg-primary text-white flex items-center justify-center rounded-md shadow-sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><span class="opacity-40 line-through decoration-2">${html.replace(/^\s*\[x\]\s+/, '')}</span></div>`;
         
-        // Inline styles
-        html = html.replace(/`([^`]+)`/g, '<code class="bg-black/5 dark:bg-white/10 px-1 rounded font-mono text-sm">$1</code>');
-        html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-        html = html.replace(/__(.*?)__/g, '<strong>$1</strong>');
-        html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-        html = html.replace(/_(.*?)_/g, '<em>$1</em>');
-        html = html.replace(/~~(.*?)~~/g, '<del>$1</del>');
-        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-primary hover:underline">$1</a>');
+        // Horizontal Rule
+        if (html.match(/^---$/)) return `<hr class="border-t-2 border-black/5 dark:border-white/5 my-6"/>`;
 
-        return `<p class="leading-relaxed min-h-[1.5em]">${html}</p>`;
+        // Inline styles
+        html = html.replace(/`([^`]+)`/g, '<code class="bg-primary/10 text-primary px-1.5 py-0.5 rounded-md font-mono text-[0.9em] mx-0.5">$1</code>');
+        html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-primary/90">$1</strong>');
+        html = html.replace(/__(.*?)__/g, '<strong class="font-bold text-primary/90">$1</strong>');
+        html = html.replace(/\*(.*?)\*/g, '<em class="italic opacity-80">$1</em>');
+        html = html.replace(/_(.*?)_/g, '<em class="italic opacity-80">$1</em>');
+        html = html.replace(/~~(.*?)~~/g, '<del class="opacity-50">$1</del>');
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary underline decoration-primary/30 hover:decoration-primary transition-all">$1</a>');
+
+        return `<p class="leading-loose min-h-[1.5em]">${html}</p>`;
     };
 
     return <div dangerouslySetInnerHTML={{ __html: renderContent(content) }} className="markdown-block break-words" />;
 };
+
+const generateId = () => Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
 
 export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWordCount, allActivities = [], onSwitchActivity }) => {
   const settings = JSON.parse(localStorage.getItem('scripta_settings') || JSON.stringify(DEFAULT_SETTINGS));
   const isLivePreview = settings.livePreview;
 
   const [title, setTitle] = useState(activity.title);
-  const [content, setContent] = useState(activity.content);
-  // Block state
-  const [blocks, setBlocks] = useState<string[]>(activity.content.split('\n'));
+  
+  // Initialize blocks with IDs
+  const [blocks, setBlocks] = useState<{id: string, content: string}[]>(() => 
+      activity.content.split('\n').map(c => ({ id: generateId(), content: c }))
+  );
+  
+  const [content, setContent] = useState(activity.content); // Keep for syncing/export
+  
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
 
   const [flatColor, setFlatColor] = useState(activity.flatColor);
@@ -136,20 +145,23 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
      if (navigator.vibrate && settings.enableHaptics) navigator.vibrate(ms);
   };
 
-  // Sync Blocks to Content string for saving
+  // Sync Blocks to Content string for saving/export
   useEffect(() => {
       if (isLivePreview) {
-          const joined = blocks.join('\n');
+          const joined = blocks.map(b => b.content).join('\n');
           if (joined !== content) setContent(joined);
       }
   }, [blocks, isLivePreview]);
 
-  // Sync Content string to Blocks (if external change or switch mode)
+  // Sync Content string to Blocks (if external change)
   useEffect(() => {
-      if (content !== blocks.join('\n')) {
-          setBlocks(content.split('\n'));
+      // Basic check to avoid loop if we just updated content from blocks
+      const currentBlockContent = blocks.map(b => b.content).join('\n');
+      if (content !== currentBlockContent) {
+          // External update (e.g. initial load or props change)
+          setBlocks(content.split('\n').map(c => ({ id: generateId(), content: c })));
       }
-  }, [content]); // careful with loops here, split/join should be stable
+  }, [activity.id]); // Only re-init if activity ID changes to avoid overwriting ongoing edits
 
   // Auto-save
   useEffect(() => {
@@ -175,44 +187,71 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
   }, [activity.linkedActivityIds]);
 
   const handleBlockChange = (index: number, val: string) => {
-      const newBlocks = [...blocks];
-      newBlocks[index] = val;
-      setBlocks(newBlocks);
+      setBlocks(prev => {
+          const newBlocks = [...prev];
+          newBlocks[index] = { ...newBlocks[index], content: val };
+          return newBlocks;
+      });
   };
 
   const handleBlockKeyDown = (index: number, e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
-          const newBlocks = [...blocks];
-          newBlocks.splice(index + 1, 0, ''); // insert new line
-          setBlocks(newBlocks);
+          const newId = generateId();
+          setBlocks(prev => {
+              const newBlocks = [...prev];
+              newBlocks.splice(index + 1, 0, { id: newId, content: '' });
+              return newBlocks;
+          });
           setFocusIndex(index + 1);
+          // Scroll adjustments could happen here if needed
       } else if (e.key === 'Backspace') {
-          if (blocks[index] === '' && blocks.length > 1) {
+          if (blocks[index].content === '' && blocks.length > 1) {
               e.preventDefault();
-              const newBlocks = [...blocks];
-              newBlocks.splice(index, 1);
-              setBlocks(newBlocks);
+              setBlocks(prev => {
+                  const newBlocks = [...prev];
+                  newBlocks.splice(index, 1);
+                  return newBlocks;
+              });
               setFocusIndex(Math.max(0, index - 1));
           } else if (e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0 && index > 0) {
               e.preventDefault();
-              const newBlocks = [...blocks];
-              const prevLength = newBlocks[index - 1].length;
-              newBlocks[index - 1] += newBlocks[index];
-              newBlocks.splice(index, 1);
-              setBlocks(newBlocks);
+              const prevContent = blocks[index - 1].content;
+              const currentContent = blocks[index].content;
+              
+              setBlocks(prev => {
+                  const newBlocks = [...prev];
+                  newBlocks[index - 1] = { ...newBlocks[index - 1], content: prevContent + currentContent };
+                  newBlocks.splice(index, 1);
+                  return newBlocks;
+              });
               setFocusIndex(index - 1);
-              // We'd ideally place cursor at prevLength, but simpler for now to focus end
+              // Note: Cursor position will default to end of merged block, which is usually what you want.
+              // To perfect it, we'd need to calculate length of prevContent and set selection range after render.
           }
       } else if (e.key === 'ArrowUp') {
           if (index > 0) {
-              e.preventDefault();
-              setFocusIndex(index - 1);
+              // Only move focus if at start of line or simply navigating blocks? 
+              // Standard behavior: Up arrow moves caret up. If at top line, move to prev block.
+              // Since AutoTextarea is one row (visually) or multi-row, we rely on selectionStart.
+              const target = e.currentTarget;
+              const cursorAtStart = target.selectionStart === 0;
+              // Simple heuristic: if on first line or just want block navigation:
+              // For smooth block nav, let's just allow default if not at top.
+              // But calculating "at top line" is hard in textarea.
+              // Let's stick to "if cursor at start"
+              if (cursorAtStart) {
+                 e.preventDefault();
+                 setFocusIndex(index - 1);
+              }
           }
       } else if (e.key === 'ArrowDown') {
           if (index < blocks.length - 1) {
-              e.preventDefault();
-              setFocusIndex(index + 1);
+              const target = e.currentTarget;
+              if (target.selectionStart === target.value.length) {
+                  e.preventDefault();
+                  setFocusIndex(index + 1);
+              }
           }
       }
   };
@@ -229,11 +268,6 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
       }
   };
 
-  const triggerConfirm = (title: string, message: string, isDangerous: boolean, onConfirm: () => void) => {
-    vibrate(20);
-    setConfirmState({ isOpen: true, title, message, isDangerous, onConfirm });
-  };
-
   return (
     <div 
         className={`flex flex-col h-full animate-slide-up bg-surface transition-colors duration-700 ease-fluid ${focusMode ? 'fixed inset-0 z-[100]' : ''}`} 
@@ -241,7 +275,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
         onClick={() => { if(showExportMenu) setShowExportMenu(false); if(showMobileMenu) setShowMobileMenu(false); }}
     >
       {!focusMode && (
-          <div className="flex items-center justify-between p-4 glass sticky top-0 z-20 border-b border-black/5 dark:border-white/5 transition-all duration-300 print:hidden select-none min-h-[64px]">
+          <div className="flex items-center justify-between p-4 glass sticky top-0 z-20 border-b border-black/5 dark:border-white/5 transition-all duration-300 print:hidden select-none min-h-[64px] backdrop-blur-xl bg-surface/50">
             <button onClick={() => { onBack(); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full transition-colors text-surface-fg/70 hover:text-primary active:scale-95 duration-200">
               <ArrowLeft size={24} />
             </button>
@@ -250,12 +284,12 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
               {isSaving && <div className="mr-2 px-3 py-1 bg-primary/10 rounded-full text-[10px] uppercase font-bold text-primary animate-pulse">Autosaving</div>}
               
               <div className="hidden md:flex items-center gap-1">
-                  <button onClick={() => { setShowColorPicker(!showColorPicker); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90" title="Color"><Palette size={20} /></button>
-                  <button onClick={() => { setShowLinkPicker(true); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90" title="Link"><LinkIcon size={20} /></button>
-                  <button onClick={(e) => { e.stopPropagation(); setShowExportMenu(!showExportMenu); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90" title="Share"><Share2 size={20} /></button>
+                  <button onClick={() => { setShowColorPicker(!showColorPicker); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 transition-transform" title="Color"><Palette size={20} /></button>
+                  <button onClick={() => { setShowLinkPicker(true); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 transition-transform" title="Link"><LinkIcon size={20} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); setShowExportMenu(!showExportMenu); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 transition-transform" title="Share"><Share2 size={20} /></button>
               </div>
 
-              <button onClick={() => { setFocusMode(true); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90" title="Focus"><Maximize2 size={20} /></button>
+              <button onClick={() => { setFocusMode(true); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 transition-transform" title="Focus"><Maximize2 size={20} /></button>
 
               <div className="md:hidden relative">
                   <button onClick={(e) => { e.stopPropagation(); setShowMobileMenu(!showMobileMenu); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90">
@@ -297,36 +331,52 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
           className={`bg-transparent font-display font-bold placeholder:text-surface-fg/20 outline-none text-surface-fg transition-all duration-500 ease-fluid ${focusMode ? 'text-4xl sm:text-5xl text-left leading-tight mb-16 w-full max-w-4xl opacity-90' : 'text-3xl sm:text-4xl w-full mb-8'}`}
         />
 
-        <div className={`w-full ${focusMode ? 'max-w-4xl' : ''}`}>
+        <div className={`w-full transition-all duration-500 ease-fluid ${focusMode ? 'max-w-4xl' : ''}`}>
             {isLivePreview ? (
-                <div className="flex flex-col gap-1 min-h-[60vh]">
-                    {blocks.map((blockContent, idx) => (
-                        <div key={idx} className="relative group transition-all duration-300 ease-spring" onClick={() => { if(focusIndex !== idx) setFocusIndex(idx); }}>
+                <div className="flex flex-col min-h-[60vh] pb-[30vh]">
+                    {blocks.map((block, idx) => (
+                        <div 
+                           key={block.id} 
+                           className={`relative group transition-all duration-500 ease-spring animate-slide-up pl-4 -ml-4 border-l-2 ${focusIndex === idx ? 'border-primary/50 bg-primary/5 sm:bg-transparent sm:border-primary/30' : 'border-transparent'}`}
+                           onClick={() => { if(focusIndex !== idx) setFocusIndex(idx); }}
+                        >
+                            {/* Focus Indicator (Desktop) */}
+                            {focusIndex === idx && (
+                                <div className="hidden sm:block absolute -left-[14px] top-1.5 w-1.5 h-1.5 rounded-full bg-primary animate-scale-in" />
+                            )}
+                            
                             {focusIndex === idx ? (
                                 <AutoTextarea 
                                     autoFocus 
-                                    value={blockContent} 
+                                    value={block.content} 
                                     onChange={(val: string) => handleBlockChange(idx, val)} 
                                     onKeyDown={(e: any) => handleBlockKeyDown(idx, e)}
                                     onBlur={() => setFocusIndex(null)}
-                                    className={`text-lg leading-relaxed font-light ${focusMode ? 'text-xl sm:text-2xl' : ''}`}
+                                    className={`text-lg leading-loose font-light ${focusMode ? 'text-xl sm:text-2xl' : ''}`}
                                     placeholder={blocks.length === 1 ? "Start writing..." : ""}
                                 />
                             ) : (
-                                <div className={`text-lg leading-relaxed font-light cursor-text min-h-[1.5em] ${focusMode ? 'text-xl sm:text-2xl' : ''} ${!blockContent ? 'h-6' : ''}`}>
-                                    <MarkdownBlock content={blockContent} />
+                                <div className={`text-lg leading-loose font-light cursor-text ${focusMode ? 'text-xl sm:text-2xl' : ''} ${!block.content ? 'h-6' : ''}`}>
+                                    <MarkdownBlock content={block.content} />
                                 </div>
                             )}
                         </div>
                     ))}
-                    {/* Click area below to append new block */}
-                    <div className="flex-1 cursor-text min-h-[200px]" onClick={(e) => {
+                    
+                    {/* Click area to append */}
+                    <div 
+                       className="flex-1 cursor-text min-h-[150px] opacity-0 hover:opacity-100 transition-opacity flex items-start pt-4 text-sm text-surface-fg/20" 
+                       onClick={(e) => {
                         if (e.target === e.currentTarget) {
-                            const newBlocks = [...blocks, ''];
+                            const newId = generateId();
+                            const newBlocks = [...blocks, { id: newId, content: '' }];
                             setBlocks(newBlocks);
                             setFocusIndex(newBlocks.length - 1);
                         }
-                    }} />
+                       }}
+                    >
+                       Click to append...
+                    </div>
                 </div>
             ) : (
                 <textarea 
@@ -341,7 +391,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
 
         {/* Links */}
         {!focusMode && linkedActivities.length > 0 && (
-            <div className="mt-12 pt-12 relative print:hidden w-full border-t border-black/5 dark:border-white/5">
+            <div className="mt-12 pt-12 relative print:hidden w-full border-t border-black/5 dark:border-white/5 animate-fade-in">
                 <div className="flex items-center justify-between mb-8 px-2">
                     <h3 className="text-xs font-bold uppercase tracking-widest opacity-40 flex items-center gap-2">
                         <LinkIcon size={14} className="text-primary"/> Linked ({linkedActivities.length})
@@ -349,13 +399,18 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                 </div>
                 <div className="space-y-6">
                     {linkedActivities.map(link => (
-                        <div key={link.id} className="bg-surface/60 backdrop-blur-sm border border-black/5 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all">
-                            <div className="p-4 bg-primary/5 cursor-pointer flex justify-between" onClick={() => setCollapsedLinks(p => ({ ...p, [link.id]: !p[link.id] }))}>
+                        <div key={link.id} className="bg-surface/60 backdrop-blur-sm border border-black/5 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group">
+                            <div className="p-4 bg-primary/5 cursor-pointer flex justify-between items-center group-hover:bg-primary/10 transition-colors" onClick={() => setCollapsedLinks(p => ({ ...p, [link.id]: !p[link.id] }))}>
                                 <div className="font-bold text-primary flex gap-2 items-center"><LinkIcon size={14}/> {link.title || 'Untitled'}</div>
-                                {collapsedLinks[link.id] ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+                                {collapsedLinks[link.id] ? <ChevronDown size={14} className="opacity-50"/> : <ChevronUp size={14} className="opacity-50"/>}
                             </div>
-                            <div className={`${collapsedLinks[link.id] ? 'hidden' : 'block'} p-4 text-sm opacity-80`}>
-                                {link.content.substring(0, 150)}...
+                            <div className={`transition-all duration-500 ease-spring overflow-hidden ${collapsedLinks[link.id] ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100 p-4'}`}>
+                                <div className="text-sm opacity-80 leading-relaxed font-light">
+                                    {link.content.substring(0, 200)}...
+                                </div>
+                                <button onClick={() => onSwitchActivity(link)} className="mt-4 text-xs font-bold uppercase tracking-wider text-primary opacity-60 hover:opacity-100 flex items-center gap-1">
+                                    Open Note <ArrowRight size={12}/>
+                                </button>
                             </div>
                         </div>
                     ))}
@@ -366,7 +421,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
 
       {/* Footer */}
       {!focusMode && showWordCount && (
-        <button onClick={() => setShowAnalytics(true)} className="fixed bottom-0 left-0 right-0 glass border-t border-black/5 p-4 flex justify-between items-center text-[11px] font-bold uppercase tracking-widest text-surface-fg/50 hover:text-primary transition-colors z-20">
+        <button onClick={() => setShowAnalytics(true)} className="fixed bottom-0 left-0 right-0 glass border-t border-black/5 p-4 flex justify-between items-center text-[11px] font-bold uppercase tracking-widest text-surface-fg/50 hover:text-primary transition-colors z-20 backdrop-blur-xl">
            <div className="flex gap-6 mx-auto max-w-3xl w-full px-6">
              <span className="flex items-center gap-1.5"><FileText size={12}/> {stats.words} Words</span>
              <span className="flex items-center gap-1.5"><Clock size={12}/> {stats.readingTime} Read</span>
