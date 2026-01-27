@@ -39,17 +39,55 @@ export const parseImportFile = (file: File): Promise<Activity[]> => {
     reader.onload = (e) => {
       try {
         const result = e.target?.result as string;
-        const data = JSON.parse(result);
-        if (Array.isArray(data)) {
-          // Basic validation
-          const valid = data.every(item => item.id && typeof item.title === 'string' && typeof item.content === 'string');
-          if (valid) resolve(data);
-          else reject(new Error('Invalid data format'));
-        } else {
-          reject(new Error('Invalid data format'));
+        if (!result) throw new Error("File is empty");
+        
+        let data;
+        try {
+          data = JSON.parse(result);
+        } catch (jsonError) {
+          throw new Error("Invalid JSON format");
         }
+
+        if (!Array.isArray(data)) {
+           throw new Error("Invalid format: Root must be an array of activities");
+        }
+        
+        // Strict validation of activities
+        const validActivities: Activity[] = [];
+        let skipped = 0;
+
+        for (const item of data) {
+           if (
+             item && 
+             typeof item.id === 'string' && 
+             typeof item.title === 'string' && 
+             (typeof item.content === 'string' || item.content === undefined)
+           ) {
+             // Sanitize/Normalize
+             validActivities.push({
+                ...item,
+                content: item.content || '',
+                updatedAt: item.updatedAt || new Date().toISOString(),
+                createdAt: item.createdAt || new Date().toISOString(),
+                wordCount: typeof item.wordCount === 'number' ? item.wordCount : 0,
+                linkedActivityIds: Array.isArray(item.linkedActivityIds) ? item.linkedActivityIds : [],
+                archived: !!item.archived,
+                deleted: !!item.deleted
+             });
+           } else {
+             skipped++;
+           }
+        }
+
+        if (validActivities.length === 0) {
+          throw new Error("No valid activities found in file");
+        }
+
+        console.log(`Parsed ${validActivities.length} activities, skipped ${skipped} invalid items.`);
+        resolve(validActivities);
+
       } catch (err) {
-        reject(err);
+        reject(err instanceof Error ? err : new Error("Unknown error during parsing"));
       }
     };
     reader.onerror = () => reject(new Error('Failed to read file'));

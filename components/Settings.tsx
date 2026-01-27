@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { AppSettings, ThemeName } from '../types';
 import { Button } from './Button';
 import { Toggle } from './Toggle';
-import { Moon, Sun, Trash, Type, Smartphone, Database, Download, Upload, Shield, Heart, HelpCircle, ExternalLink, FileText, BarChart3 } from 'lucide-react';
+import { Moon, Sun, Trash, Type, Database, Download, Upload, Shield, Heart, HelpCircle, AlertTriangle, Check, Loader2, Info } from 'lucide-react';
 import { exportData, parseImportFile } from '../utils/dataTransfer';
 import { dbService } from '../services/db';
 
@@ -14,6 +14,10 @@ interface SettingsProps {
 
 export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, onClearData }) => {
   const [dbSize, setDbSize] = useState<string>('Calculated...');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error' | 'info', text: string } | null>(null);
+  const [showAboutModal, setShowAboutModal] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -36,11 +40,21 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
   };
 
   const handleExport = async () => {
-      const activities = await dbService.getAllActivities();
-      exportData(activities);
+      setIsProcessing(true);
+      setStatusMsg(null);
+      try {
+          const activities = await dbService.getAllActivities();
+          exportData(activities);
+          setStatusMsg({ type: 'success', text: 'Backup downloaded successfully.' });
+      } catch (err) {
+          setStatusMsg({ type: 'error', text: 'Failed to export data.' });
+      } finally {
+          setIsProcessing(false);
+      }
   };
 
   const handleImportClick = () => {
+      setStatusMsg(null);
       fileInputRef.current?.click();
   };
 
@@ -48,23 +62,29 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
       const file = e.target.files?.[0];
       if (!file) return;
 
-      if (!window.confirm("Importing data will merge with your existing activities. Continue?")) {
-          e.target.value = '';
-          return;
-      }
-
+      setIsProcessing(true);
       try {
           const activities = await parseImportFile(file);
-          // Insert all
-          for (const activity of activities) {
-              await dbService.saveActivity(activity);
+          
+          if (window.confirm(`Found ${activities.length} activities in backup. Merge them with your current data?`)) {
+              let importedCount = 0;
+              for (const activity of activities) {
+                  // Ensure we don't overwrite newer versions if ID exists, or handle merge logic
+                  // For simplicity, we stick to "last write wins" or just saving it as is
+                  await dbService.saveActivity(activity);
+                  importedCount++;
+              }
+              setStatusMsg({ type: 'success', text: `Successfully imported ${importedCount} activities.` });
+              setTimeout(() => window.location.reload(), 1500); 
+          } else {
+              setStatusMsg({ type: 'info', text: 'Import cancelled.' });
           }
-          alert(`Successfully imported ${activities.length} activities.`);
-          window.location.reload(); 
       } catch (err) {
-          alert('Failed to import: ' + err);
+          setStatusMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to parse backup file.' });
+      } finally {
+          setIsProcessing(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
       }
-      e.target.value = '';
   };
 
   return (
@@ -157,8 +177,8 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
         <div className="bg-surface rounded-2xl p-6 border border-black/5 dark:border-white/5 shadow-sm space-y-6">
             <div className="flex items-center justify-between">
                  <div>
-                    <p className="font-medium flex items-center gap-2"><BarChart3 size={16}/> Anonymous Analytics</p>
-                    <p className="text-sm opacity-50">Allow Scripta to collect anonymous usage statistics to improve the app.</p>
+                    <p className="font-medium flex items-center gap-2">Anonymous Analytics</p>
+                    <p className="text-sm opacity-50">Allow Scripta to collect anonymous usage statistics.</p>
                  </div>
                  <Toggle 
                     checked={settings.enableAnalytics} 
@@ -172,33 +192,19 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
       <section className="mb-8">
          <h2 className="text-lg font-bold mb-4 flex items-center gap-2 opacity-70"><HelpCircle size={18}/> About Scripta</h2>
          <div className="bg-surface rounded-2xl p-6 border border-black/5 dark:border-white/5 shadow-sm space-y-4">
-            <a href="https://scripta.landecs.org/about" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between group p-2 hover:bg-background rounded-lg transition-colors">
+            <button onClick={() => setShowAboutModal(true)} className="w-full flex items-center justify-between group p-2 hover:bg-background rounded-lg transition-colors text-left">
                 <div className="flex items-center gap-3">
-                    <HelpCircle size={20} className="text-primary opacity-70"/>
-                    <span>About Scripta</span>
+                    <Info size={20} className="text-primary opacity-70"/>
+                    <span>About, Privacy & Terms</span>
                 </div>
-                <ExternalLink size={16} className="opacity-30 group-hover:opacity-100 transition-opacity"/>
-            </a>
-            <a href="https://scripta.landecs.org/privacy" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between group p-2 hover:bg-background rounded-lg transition-colors">
-                <div className="flex items-center gap-3">
-                    <Shield size={20} className="text-primary opacity-70"/>
-                    <span>Privacy Policy</span>
-                </div>
-                <ExternalLink size={16} className="opacity-30 group-hover:opacity-100 transition-opacity"/>
-            </a>
-            <a href="https://scripta.landecs.org/terms" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between group p-2 hover:bg-background rounded-lg transition-colors">
-                <div className="flex items-center gap-3">
-                    <FileText size={20} className="text-primary opacity-70"/>
-                    <span>Terms of Use</span>
-                </div>
-                <ExternalLink size={16} className="opacity-30 group-hover:opacity-100 transition-opacity"/>
-            </a>
-            <a href="https://www.landecs.org/docs/donation" target="_blank" rel="noopener noreferrer" className="flex items-center justify-between group p-2 hover:bg-background rounded-lg transition-colors">
+                <div className="px-3 py-1 bg-black/5 dark:bg-white/5 rounded-full text-xs font-bold opacity-50 group-hover:opacity-100">View</div>
+            </button>
+            <a href="mailto:support@scripta.app" className="flex items-center justify-between group p-2 hover:bg-background rounded-lg transition-colors">
                 <div className="flex items-center gap-3">
                     <Heart size={20} className="text-red-500 opacity-70"/>
-                    <span>Support & Donate</span>
+                    <span>Support & Feedback</span>
                 </div>
-                <ExternalLink size={16} className="opacity-30 group-hover:opacity-100 transition-opacity"/>
+                <div className="px-3 py-1 bg-black/5 dark:bg-white/5 rounded-full text-xs font-bold opacity-50 group-hover:opacity-100">Email</div>
             </a>
          </div>
       </section>
@@ -212,12 +218,25 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
                 <span className="text-sm opacity-50 font-mono">{dbSize}</span>
             </div>
 
+            {statusMsg && (
+                <div className={`p-4 rounded-xl flex items-center gap-3 ${
+                    statusMsg.type === 'success' ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300' :
+                    statusMsg.type === 'error' ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300' :
+                    'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300'
+                }`}>
+                    {statusMsg.type === 'success' && <Check size={20} />}
+                    {statusMsg.type === 'error' && <AlertTriangle size={20} />}
+                    {statusMsg.type === 'info' && <Info size={20} />}
+                    <span className="text-sm font-medium">{statusMsg.text}</span>
+                </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
-                <Button variant="secondary" onClick={handleExport} icon={<Download size={18}/>}>
-                    Export Backup
+                <Button variant="secondary" onClick={handleExport} disabled={isProcessing} icon={isProcessing ? <Loader2 size={18} className="animate-spin"/> : <Download size={18}/>}>
+                    {isProcessing ? 'Processing...' : 'Export Backup'}
                 </Button>
-                <Button variant="secondary" onClick={handleImportClick} icon={<Upload size={18}/>}>
-                    Import Backup
+                <Button variant="secondary" onClick={handleImportClick} disabled={isProcessing} icon={isProcessing ? <Loader2 size={18} className="animate-spin"/> : <Upload size={18}/>}>
+                    {isProcessing ? 'Processing...' : 'Import Backup'}
                 </Button>
                 <input 
                     type="file" 
@@ -244,6 +263,43 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
             </div>
         </div>
       </section>
+
+      {/* About Modal */}
+      {showAboutModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => setShowAboutModal(false)}>
+              <div className="bg-surface max-w-lg w-full max-h-[80vh] overflow-y-auto rounded-3xl p-8 shadow-2xl animate-slide-up border border-white/10" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-2xl font-display font-bold text-primary">Scripta</h2>
+                      <button onClick={() => setShowAboutModal(false)} className="p-2 hover:bg-black/5 rounded-full"><AlertTriangle size={20} className="opacity-0"/><span className="sr-only">Close</span><div className="i-lucide-x"></div></button>
+                  </div>
+                  
+                  <div className="space-y-6 text-sm leading-relaxed opacity-80">
+                      <div>
+                          <h3 className="font-bold text-lg mb-2 text-surface-fg">About</h3>
+                          <p>Scripta is an offline-first, distraction-free writing and thinking workspace. It is designed to help you capture thoughts quickly and link them together to form a personal knowledge base.</p>
+                      </div>
+                      
+                      <div>
+                          <h3 className="font-bold text-lg mb-2 text-surface-fg">Privacy Policy</h3>
+                          <p>Scripta operates entirely on your device. Your data is stored in your browser's IndexedDB and is never sent to any server unless you explicitly enable anonymous analytics. We do not track your personal information or content.</p>
+                      </div>
+
+                      <div>
+                          <h3 className="font-bold text-lg mb-2 text-surface-fg">Terms of Use</h3>
+                          <p>This software is provided "as is", without warranty of any kind. You are solely responsible for backing up your data using the Export feature provided in Settings.</p>
+                      </div>
+
+                      <div className="pt-4 border-t border-black/10 dark:border-white/10">
+                          <p className="text-xs opacity-50">Version 1.0.0 &bull; Local Storage Only</p>
+                      </div>
+                  </div>
+                  
+                  <div className="mt-8">
+                      <Button onClick={() => setShowAboutModal(false)} className="w-full">Close</Button>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };

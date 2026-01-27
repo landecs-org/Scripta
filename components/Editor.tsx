@@ -20,7 +20,7 @@ interface EditorProps {
   onSwitchActivity: (activity: Activity) => void;
 }
 
-// Simple Markdown Parser Component
+// Improved Markdown Parser Component
 const MarkdownPreview: React.FC<{ content: string }> = ({ content }) => {
   if (!content) return <div className="text-surface-fg/30 italic">No content to preview</div>;
 
@@ -30,6 +30,9 @@ const MarkdownPreview: React.FC<{ content: string }> = ({ content }) => {
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
+
+    // Images ![alt](url)
+    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-xl my-4 max-w-full shadow-md" />');
 
     // Code blocks
     html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
@@ -57,24 +60,36 @@ const MarkdownPreview: React.FC<{ content: string }> = ({ content }) => {
     html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
     html = html.replace(/_(.*?)_/g, '<em>$1</em>');
 
-    // Unordered Lists
-    html = html.replace(/^\s*-\s+(.*$)/gm, '<ul><li>$1</li></ul>');
-    // Fix adjacent lists (hacky regex)
+    // Strikethrough
+    html = html.replace(/~~(.*?)~~/g, '<del>$1</del>');
+
+    // Unordered Lists - fix regex to handle multiple items better
+    html = html.replace(/^\s*-\s+(.*$)/gm, '<li>$1</li>');
+    html = html.replace(/(<li>.*<\/li>)/g, '<ul>$1</ul>');
+    // Clean up adjacent ul tags
     html = html.replace(/<\/ul>\s*<ul>/g, '');
 
     // Checkboxes (Task lists)
-    html = html.replace(/^\s*\[ \]\s+(.*$)/gm, '<div class="flex items-center gap-2 mb-1"><div class="w-4 h-4 border border-current rounded opacity-50"></div><span>$1</span></div>');
-    html = html.replace(/^\s*\[x\]\s+(.*$)/gm, '<div class="flex items-center gap-2 mb-1"><div class="w-4 h-4 bg-primary text-white flex items-center justify-center rounded"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4"><polyline points="20 6 9 17 4 12"></polyline></svg></div><span class="opacity-50 line-through">$1</span></div>');
+    html = html.replace(/^\s*\[ \]\s+(.*$)/gm, '<div class="flex items-start gap-3 mb-2"><div class="mt-1 w-4 h-4 border border-current rounded opacity-50 shrink-0"></div><span>$1</span></div>');
+    html = html.replace(/^\s*\[x\]\s+(.*$)/gm, '<div class="flex items-start gap-3 mb-2"><div class="mt-1 w-4 h-4 bg-primary text-white flex items-center justify-center rounded shrink-0"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4"><polyline points="20 6 9 17 4 12"></polyline></svg></div><span class="opacity-50 line-through">$1</span></div>');
 
-    // Line breaks for paragraphs (if not inside pre/ul/blockquote)
+    // Links [text](url) - ensure this is last to avoid conflict with images
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">$1</a>');
+
+    // Line breaks for paragraphs (if not inside pre/ul/blockquote/li)
+    // A simple approach: Replace double newlines with paragraph tags? 
+    // For this simple parser, we preserve newlines as br unless it looks like a block level element
     html = html.replace(/\n/g, '<br />');
+    
+    // Cleanup br tags after block elements to prevent huge gaps
+    html = html.replace(/(<\/h[1-6]>|<\/ul>|<\/pre>|<\/blockquote>|<\/div>)<br \/>/g, '$1');
 
     return { __html: html };
   };
 
   return (
     <div 
-      className="markdown-body selectable-text pb-[50vh] text-lg leading-loose"
+      className="markdown-body selectable-text pb-32 text-lg leading-loose break-words"
       dangerouslySetInnerHTML={renderContent(content)} 
     />
   );
@@ -360,7 +375,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
         }}
     >
       {!focusMode && (
-          <div className="flex items-center justify-between p-4 glass sticky top-0 z-20 border-b border-black/5 dark:border-white/5 transition-all duration-300 print:hidden select-none">
+          <div className="flex items-center justify-between p-4 glass sticky top-0 z-20 border-b border-black/5 dark:border-white/5 transition-all duration-300 print:hidden select-none min-h-[64px]">
             <button onClick={handleBack} className="p-2 hover:bg-black/5 rounded-full transition-colors text-surface-fg/70 hover:text-primary active:scale-95 duration-200">
               <ArrowLeft size={24} />
             </button>
@@ -429,7 +444,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
       {focusMode && (
           <button 
              onClick={toggleFocusMode}
-             className="fixed top-8 right-8 z-[110] p-4 bg-transparent text-surface-fg/30 hover:text-surface-fg hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-all duration-300 transform active:scale-90"
+             className="fixed top-6 right-6 z-[110] p-4 bg-transparent text-surface-fg/30 hover:text-surface-fg hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-all duration-300 transform active:scale-90"
              title="Exit Focus Mode"
           >
              <Minimize2 size={28} />
@@ -440,7 +455,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
         
         {/* Markdown Toolbar */}
         {!isReadingMode && showFormatBar && (
-            <div className={`w-full max-w-2xl mx-auto mb-6 flex items-center justify-center gap-2 sm:gap-4 p-2 rounded-xl bg-black/5 dark:bg-white/5 animate-slide-up ${focusMode ? 'mb-12' : ''}`}>
+            <div className={`w-full max-w-2xl mx-auto mb-6 flex items-center justify-center gap-2 sm:gap-4 p-2 rounded-xl bg-black/5 dark:bg-white/5 animate-slide-up sticky top-0 z-10 backdrop-blur-sm ${focusMode ? 'mb-12' : ''}`}>
                 <button onClick={() => insertFormat('**', 'wrap')} className="p-2 hover:bg-background rounded-lg transition-colors text-surface-fg/70 hover:text-primary"><Bold size={18}/></button>
                 <button onClick={() => insertFormat('_', 'wrap')} className="p-2 hover:bg-background rounded-lg transition-colors text-surface-fg/70 hover:text-primary"><Italic size={18}/></button>
                 <div className="w-px h-6 bg-surface-fg/10"></div>
@@ -477,7 +492,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                    onChange={(e) => setContent(e.target.value)}
                    onPaste={handlePaste}
                    placeholder="Start writing..."
-                   className={`w-full bg-transparent resize-none outline-none font-light text-surface-fg placeholder:text-surface-fg/20 transition-all duration-500 ease-fluid pb-[50vh] text-left selectable-text ${focusMode ? 'text-xl sm:text-2xl leading-[2] tracking-wide min-h-[80vh]' : 'text-lg leading-loose min-h-[50vh]'}`}
+                   className={`w-full bg-transparent resize-none outline-none font-light text-surface-fg placeholder:text-surface-fg/20 transition-all duration-500 ease-fluid pb-[40vh] text-left selectable-text ${focusMode ? 'text-xl sm:text-2xl leading-[2] tracking-wide min-h-[80vh]' : 'text-lg leading-loose min-h-[60vh] mobile-safe-height'}`}
                    spellCheck="false"
                  />
              )}
