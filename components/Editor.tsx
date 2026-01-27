@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Activity } from '../types';
-import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, X, BarChart2, Share2, Copy, FileText, Download, Maximize2, Minimize2, MoreVertical, Clock, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, BarChart2, Share2, Copy, FileText, Download, Maximize2, Minimize2, MoreVertical, Clock, ArrowRight } from 'lucide-react';
 import { dbService } from '../services/db';
 import { ActivityPicker } from './ActivityPicker';
 import { AnalyticsSheet } from './AnalyticsSheet';
@@ -10,6 +10,7 @@ import { analyzeText } from '../utils/analytics';
 import { getAdaptiveColor, isDarkMode } from '../utils/colors';
 import { exportActivity } from '../utils/dataTransfer';
 import { CARD_COLORS, DEFAULT_SETTINGS } from '../constants';
+import { motion, AnimatePresence, Reorder } from 'framer-motion';
 
 interface EditorProps {
   activity: Activity;
@@ -21,9 +22,10 @@ interface EditorProps {
 }
 
 // Reusable Auto-Resizing Textarea for Blocks
-const AutoTextarea = ({ value, onChange, onKeyDown, autoFocus, placeholder, className, onBlur, onFocus }: any) => {
+const AutoTextarea = ({ value, onChange, onKeyDown, autoFocus, placeholder, className, onBlur, onFocus, selectionStart }: any) => {
     const ref = useRef<HTMLTextAreaElement>(null);
 
+    // Auto-resize
     useEffect(() => {
         if(ref.current) {
             ref.current.style.height = 'auto';
@@ -31,14 +33,19 @@ const AutoTextarea = ({ value, onChange, onKeyDown, autoFocus, placeholder, clas
         }
     }, [value]);
 
+    // Handle Focus and Selection
     useEffect(() => {
         if (autoFocus && ref.current) {
             ref.current.focus();
-            // Basic cursor placement at end for better flow when appending
-            // For merging (backspace), explicit cursor management would be needed for perfection, 
-            // but auto-focusing usually places cursor at end which is correct for merge-to-prev.
+            if (typeof selectionStart === 'number') {
+                ref.current.setSelectionRange(selectionStart, selectionStart);
+            } else {
+                // Default to end
+                const len = ref.current.value.length;
+                ref.current.setSelectionRange(len, len);
+            }
         }
-    }, [autoFocus]);
+    }, [autoFocus, selectionStart]);
 
     return (
         <textarea
@@ -66,9 +73,9 @@ const MarkdownBlock: React.FC<{ content: string }> = ({ content }) => {
         html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-xl my-3 max-w-full shadow-lg hover:scale-[1.01] transition-transform duration-500 ease-spring" />');
 
         // Headers
-        if (html.startsWith('# ')) return `<h1 class="text-4xl font-bold mt-6 mb-3 tracking-tight text-primary">${html.substring(2)}</h1>`;
-        if (html.startsWith('## ')) return `<h2 class="text-2xl font-bold mt-4 mb-2 tracking-tight opacity-90">${html.substring(3)}</h2>`;
-        if (html.startsWith('### ')) return `<h3 class="text-xl font-bold mt-3 mb-1 tracking-tight opacity-80">${html.substring(4)}</h3>`;
+        if (html.startsWith('# ')) return `<h1 class="text-3xl sm:text-4xl font-bold mt-6 mb-3 tracking-tight text-primary">${html.substring(2)}</h1>`;
+        if (html.startsWith('## ')) return `<h2 class="text-2xl sm:text-3xl font-bold mt-4 mb-2 tracking-tight opacity-90">${html.substring(3)}</h2>`;
+        if (html.startsWith('### ')) return `<h3 class="text-xl sm:text-2xl font-bold mt-3 mb-1 tracking-tight opacity-80">${html.substring(4)}</h3>`;
 
         // Blockquotes
         if (html.startsWith('> ')) return `<blockquote class="border-l-4 border-primary/50 pl-4 italic opacity-70 my-3 py-1 bg-black/5 dark:bg-white/5 rounded-r-lg">${html.substring(2)}</blockquote>`;
@@ -107,14 +114,15 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
 
   const [title, setTitle] = useState(activity.title);
   
-  // Initialize blocks with IDs
+  // Initialize blocks
   const [blocks, setBlocks] = useState<{id: string, content: string}[]>(() => 
-      activity.content.split('\n').map(c => ({ id: generateId(), content: c }))
+      activity.content ? activity.content.split('\n').map(c => ({ id: generateId(), content: c })) : [{ id: generateId(), content: '' }]
   );
   
-  const [content, setContent] = useState(activity.content); // Keep for syncing/export
+  const [content, setContent] = useState(activity.content);
   
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
+  const [cursorOffset, setCursorOffset] = useState<number | null>(null);
 
   const [flatColor, setFlatColor] = useState(activity.flatColor);
   const [adaptiveColor, setAdaptiveColor] = useState(activity.flatColor);
@@ -155,13 +163,12 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
 
   // Sync Content string to Blocks (if external change)
   useEffect(() => {
-      // Basic check to avoid loop if we just updated content from blocks
       const currentBlockContent = blocks.map(b => b.content).join('\n');
-      if (content !== currentBlockContent) {
-          // External update (e.g. initial load or props change)
-          setBlocks(content.split('\n').map(c => ({ id: generateId(), content: c })));
+      if (content !== currentBlockContent && activity.content !== currentBlockContent) {
+          // External update
+          setBlocks(activity.content.split('\n').map(c => ({ id: generateId(), content: c })));
       }
-  }, [activity.id]); // Only re-init if activity ID changes to avoid overwriting ongoing edits
+  }, [activity.id]); 
 
   // Auto-save
   useEffect(() => {
@@ -197,14 +204,25 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
   const handleBlockKeyDown = (index: number, e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
+          const target = e.currentTarget;
+          const selectionStart = target.selectionStart;
+          const content = blocks[index].content;
+          
+          const firstHalf = content.slice(0, selectionStart);
+          const secondHalf = content.slice(selectionStart);
+
           const newId = generateId();
+          
           setBlocks(prev => {
               const newBlocks = [...prev];
-              newBlocks.splice(index + 1, 0, { id: newId, content: '' });
+              newBlocks[index] = { ...newBlocks[index], content: firstHalf };
+              newBlocks.splice(index + 1, 0, { id: newId, content: secondHalf });
               return newBlocks;
           });
+          
           setFocusIndex(index + 1);
-          // Scroll adjustments could happen here if needed
+          setCursorOffset(0); // Focus start of new block
+          
       } else if (e.key === 'Backspace') {
           if (blocks[index].content === '' && blocks.length > 1) {
               e.preventDefault();
@@ -214,6 +232,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                   return newBlocks;
               });
               setFocusIndex(Math.max(0, index - 1));
+              setCursorOffset(null); // Focus end by default
           } else if (e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0 && index > 0) {
               e.preventDefault();
               const prevContent = blocks[index - 1].content;
@@ -226,32 +245,19 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                   return newBlocks;
               });
               setFocusIndex(index - 1);
-              // Note: Cursor position will default to end of merged block, which is usually what you want.
-              // To perfect it, we'd need to calculate length of prevContent and set selection range after render.
+              setCursorOffset(prevContent.length); // Restore cursor position
           }
       } else if (e.key === 'ArrowUp') {
-          if (index > 0) {
-              // Only move focus if at start of line or simply navigating blocks? 
-              // Standard behavior: Up arrow moves caret up. If at top line, move to prev block.
-              // Since AutoTextarea is one row (visually) or multi-row, we rely on selectionStart.
-              const target = e.currentTarget;
-              const cursorAtStart = target.selectionStart === 0;
-              // Simple heuristic: if on first line or just want block navigation:
-              // For smooth block nav, let's just allow default if not at top.
-              // But calculating "at top line" is hard in textarea.
-              // Let's stick to "if cursor at start"
-              if (cursorAtStart) {
-                 e.preventDefault();
-                 setFocusIndex(index - 1);
-              }
+          if (index > 0 && e.currentTarget.selectionStart === 0) {
+              e.preventDefault();
+              setFocusIndex(index - 1);
+              setCursorOffset(null); 
           }
       } else if (e.key === 'ArrowDown') {
-          if (index < blocks.length - 1) {
-              const target = e.currentTarget;
-              if (target.selectionStart === target.value.length) {
-                  e.preventDefault();
-                  setFocusIndex(index + 1);
-              }
+          if (index < blocks.length - 1 && e.currentTarget.selectionStart === e.currentTarget.value.length) {
+              e.preventDefault();
+              setFocusIndex(index + 1);
+              setCursorOffset(0);
           }
       }
   };
@@ -322,7 +328,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
           </button>
       )}
 
-      <div className={`flex-1 overflow-y-auto w-full no-scrollbar scroll-smooth transition-all duration-700 ease-fluid ${focusMode ? 'px-[5vw] pt-24 pb-32 flex flex-col items-center' : 'px-6 py-8 max-w-3xl mx-auto pb-32'}`}>
+      <div className={`flex-1 overflow-y-auto w-full no-scrollbar scroll-smooth transition-all duration-700 ease-fluid ${focusMode ? 'px-4 sm:px-[5vw] pt-24 pb-32 flex flex-col items-center' : 'px-4 py-8 max-w-3xl mx-auto pb-32'}`}>
         <input 
           type="text" 
           value={title}
@@ -334,24 +340,31 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
         <div className={`w-full transition-all duration-500 ease-fluid ${focusMode ? 'max-w-4xl' : ''}`}>
             {isLivePreview ? (
                 <div className="flex flex-col min-h-[60vh] pb-[30vh]">
+                    <AnimatePresence initial={false}>
                     {blocks.map((block, idx) => (
-                        <div 
+                        <motion.div 
                            key={block.id} 
-                           className={`relative group transition-all duration-500 ease-spring animate-slide-up pl-4 -ml-4 border-l-2 ${focusIndex === idx ? 'border-primary/50 bg-primary/5 sm:bg-transparent sm:border-primary/30' : 'border-transparent'}`}
+                           layout
+                           initial={{ opacity: 0, y: 10 }}
+                           animate={{ opacity: 1, y: 0 }}
+                           exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.1 } }}
+                           transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                           className={`relative group pl-4 -ml-4 border-l-2 ${focusIndex === idx ? 'border-primary/50 bg-primary/5 sm:bg-transparent sm:border-primary/30' : 'border-transparent'}`}
                            onClick={() => { if(focusIndex !== idx) setFocusIndex(idx); }}
                         >
                             {/* Focus Indicator (Desktop) */}
                             {focusIndex === idx && (
-                                <div className="hidden sm:block absolute -left-[14px] top-1.5 w-1.5 h-1.5 rounded-full bg-primary animate-scale-in" />
+                                <motion.div layoutId="activeBlockIndicator" className="hidden sm:block absolute -left-[13px] top-2.5 w-1.5 h-1.5 rounded-full bg-primary" />
                             )}
                             
                             {focusIndex === idx ? (
                                 <AutoTextarea 
                                     autoFocus 
+                                    selectionStart={cursorOffset}
                                     value={block.content} 
                                     onChange={(val: string) => handleBlockChange(idx, val)} 
                                     onKeyDown={(e: any) => handleBlockKeyDown(idx, e)}
-                                    onBlur={() => setFocusIndex(null)}
+                                    onBlur={() => { setFocusIndex(null); setCursorOffset(null); }}
                                     className={`text-lg leading-loose font-light ${focusMode ? 'text-xl sm:text-2xl' : ''}`}
                                     placeholder={blocks.length === 1 ? "Start writing..." : ""}
                                 />
@@ -360,8 +373,9 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                                     <MarkdownBlock content={block.content} />
                                 </div>
                             )}
-                        </div>
+                        </motion.div>
                     ))}
+                    </AnimatePresence>
                     
                     {/* Click area to append */}
                     <div 
@@ -372,6 +386,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                             const newBlocks = [...blocks, { id: newId, content: '' }];
                             setBlocks(newBlocks);
                             setFocusIndex(newBlocks.length - 1);
+                            setCursorOffset(0);
                         }
                        }}
                     >

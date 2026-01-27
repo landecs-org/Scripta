@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -53,3 +54,32 @@ textarea, input {
 .markdown-body pre { @apply bg-black/5 dark:bg-white/5 p-4 rounded-xl overflow-x-auto mb-4 font-mono text-sm; }
 .markdown-body strong { @apply font-bold text-primary; }
 .markdown-body hr { @apply border-black/10 dark:border-white/10 my-8; }
+
+/* Custom Animations */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes scaleIn {
+    from { transform: scale(0.95); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+/* Base element transitions */
+* {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Mobile specific optimisations */
+@media (max-width: 640px) {
+    textarea, input {
+        font-size: 16px !important; /* Prevent iOS zoom */
+    }
+}
