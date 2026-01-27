@@ -10,7 +10,7 @@ import { analyzeText } from '../utils/analytics';
 import { getAdaptiveColor, isDarkMode } from '../utils/colors';
 import { exportActivity } from '../utils/dataTransfer';
 import { CARD_COLORS, DEFAULT_SETTINGS } from '../constants';
-import { motion, AnimatePresence, Reorder } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface EditorProps {
   activity: Activity;
@@ -80,13 +80,13 @@ const MarkdownBlock: React.FC<{ content: string }> = ({ content }) => {
         // Blockquotes
         if (html.startsWith('> ')) return `<blockquote class="border-l-4 border-primary/50 pl-4 italic opacity-70 my-3 py-1 bg-black/5 dark:bg-white/5 rounded-r-lg">${html.substring(2)}</blockquote>`;
 
-        // Lists
-        if (html.match(/^\s*-\s+/)) return `<div class="flex gap-3 my-1 ml-1"><span class="text-primary font-bold">&bull;</span><span>${html.replace(/^\s*-\s+/, '')}</span></div>`;
-        if (html.match(/^\s*\d+\.\s+/)) return `<div class="flex gap-3 my-1 ml-1"><span class="text-primary font-mono font-bold opacity-60">${html.match(/^\s*(\d+\.)\s+/)?.[1]}</span><span>${html.replace(/^\s*\d+\.\s+/, '')}</span></div>`;
+        // Lists - Improved indentation
+        if (html.match(/^\s*-\s+/)) return `<div class="flex gap-3 my-1 ml-1 leading-loose"><span class="text-primary font-bold select-none">&bull;</span><span>${html.replace(/^\s*-\s+/, '')}</span></div>`;
+        if (html.match(/^\s*\d+\.\s+/)) return `<div class="flex gap-3 my-1 ml-1 leading-loose"><span class="text-primary font-mono font-bold opacity-60 select-none">${html.match(/^\s*(\d+\.)\s+/)?.[1]}</span><span>${html.replace(/^\s*\d+\.\s+/, '')}</span></div>`;
 
-        // Checkboxes
-        if (html.match(/^\s*\[ \]\s+/)) return `<div class="flex items-center gap-3 my-1 group cursor-pointer opacity-80 hover:opacity-100 transition-opacity"><div class="w-5 h-5 border-2 border-surface-fg/30 rounded-md group-hover:border-primary transition-colors"></div><span class="decoration-surface-fg/30">${html.replace(/^\s*\[ \]\s+/, '')}</span></div>`;
-        if (html.match(/^\s*\[x\]\s+/)) return `<div class="flex items-center gap-3 my-1 group cursor-pointer"><div class="w-5 h-5 bg-primary text-white flex items-center justify-center rounded-md shadow-sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><span class="opacity-40 line-through decoration-2">${html.replace(/^\s*\[x\]\s+/, '')}</span></div>`;
+        // Checkboxes - Functional
+        if (html.match(/^\s*\[ \]\s+/)) return `<div class="flex items-start gap-3 my-1 group cursor-pointer opacity-80 hover:opacity-100 transition-opacity" data-action="toggle-check"><div class="w-5 h-5 mt-1 border-2 border-surface-fg/30 rounded-md group-hover:border-primary transition-colors pointer-events-none flex-shrink-0"></div><span class="decoration-surface-fg/30 pointer-events-none leading-loose">${html.replace(/^\s*\[ \]\s+/, '')}</span></div>`;
+        if (html.match(/^\s*\[x\]\s+/)) return `<div class="flex items-start gap-3 my-1 group cursor-pointer" data-action="toggle-uncheck"><div class="w-5 h-5 mt-1 bg-primary text-white flex items-center justify-center rounded-md shadow-sm pointer-events-none flex-shrink-0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div><span class="opacity-40 line-through decoration-2 pointer-events-none leading-loose">${html.replace(/^\s*\[x\]\s+/, '')}</span></div>`;
         
         // Horizontal Rule
         if (html.match(/^---$/)) return `<hr class="border-t-2 border-black/5 dark:border-white/5 my-6"/>`;
@@ -100,7 +100,7 @@ const MarkdownBlock: React.FC<{ content: string }> = ({ content }) => {
         html = html.replace(/~~(.*?)~~/g, '<del class="opacity-50">$1</del>');
         html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary underline decoration-primary/30 hover:decoration-primary transition-all">$1</a>');
 
-        return `<p class="leading-loose min-h-[1.5em]">${html}</p>`;
+        return `<div class="leading-loose min-h-[1.5em]">${html}</div>`;
     };
 
     return <div dangerouslySetInnerHTML={{ __html: renderContent(content) }} className="markdown-block break-words" />;
@@ -170,12 +170,24 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
       }
   }, [activity.id]); 
 
+  // Immediate Save Helper
+  const saveCurrentState = async () => {
+     await onSave({ 
+         ...activity, 
+         title, 
+         content, 
+         flatColor, 
+         wordCount: stats.words, 
+         updatedAt: new Date().toISOString() 
+     });
+  };
+
   // Auto-save
   useEffect(() => {
     const timer = setTimeout(async () => {
       if (title !== activity.title || content !== activity.content || flatColor !== activity.flatColor) {
         setIsSaving(true);
-        await onSave({ ...activity, title, content, flatColor, wordCount: stats.words, updatedAt: new Date().toISOString() });
+        await saveCurrentState();
         setIsSaving(false);
       }
     }, 1500);
@@ -199,6 +211,18 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
           newBlocks[index] = { ...newBlocks[index], content: val };
           return newBlocks;
       });
+  };
+
+  const handleCheckboxToggle = (index: number) => {
+      setBlocks(prev => {
+          const newBlocks = [...prev];
+          let c = newBlocks[index].content;
+          if (c.match(/^\s*\[ \]/)) c = c.replace(/^(\s*)\[ \]/, '$1[x]');
+          else if (c.match(/^\s*\[x\]/)) c = c.replace(/^(\s*)\[x\]/, '$1[ ]');
+          newBlocks[index] = { ...newBlocks[index], content: c };
+          return newBlocks;
+      });
+      vibrate();
   };
 
   const handleBlockKeyDown = (index: number, e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -262,6 +286,16 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
       }
   };
 
+  const handleSafeBack = async () => {
+      await saveCurrentState();
+      onBack();
+  };
+
+  const handleSafeSwitchActivity = async (target: Activity) => {
+      await saveCurrentState();
+      onSwitchActivity(target);
+  };
+
   const handleLinkActivity = async (id: string) => {
       setShowMobileMenu(false); setShowLinkPicker(false);
       if (activity.linkedActivityIds?.includes(id) || id === activity.id) return;
@@ -282,7 +316,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
     >
       {!focusMode && (
           <div className="flex items-center justify-between p-4 glass sticky top-0 z-20 border-b border-black/5 dark:border-white/5 transition-all duration-300 print:hidden select-none min-h-[64px] backdrop-blur-xl bg-surface/50">
-            <button onClick={() => { onBack(); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full transition-colors text-surface-fg/70 hover:text-primary active:scale-95 duration-200">
+            <button onClick={() => { handleSafeBack(); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full transition-colors text-surface-fg/70 hover:text-primary active:scale-95 duration-200">
               <ArrowLeft size={24} />
             </button>
             
@@ -328,7 +362,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
           </button>
       )}
 
-      <div className={`flex-1 overflow-y-auto w-full no-scrollbar scroll-smooth transition-all duration-700 ease-fluid ${focusMode ? 'px-4 sm:px-[5vw] pt-24 pb-32 flex flex-col items-center' : 'px-4 py-8 max-w-3xl mx-auto pb-32'}`}>
+      <div className={`flex-1 overflow-y-auto w-full no-scrollbar scroll-smooth transition-all duration-700 ease-fluid ${focusMode ? 'px-6 sm:px-[5vw] pt-24 pb-32 flex flex-col items-center' : 'px-5 py-8 max-w-3xl mx-auto pb-32'}`}>
         <input 
           type="text" 
           value={title}
@@ -350,7 +384,16 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                            exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.1 } }}
                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
                            className={`relative group pl-4 -ml-4 border-l-2 ${focusIndex === idx ? 'border-primary/50 bg-primary/5 sm:bg-transparent sm:border-primary/30' : 'border-transparent'}`}
-                           onClick={() => { if(focusIndex !== idx) setFocusIndex(idx); }}
+                           onClick={(e) => { 
+                               // Handle checkbox clicks in preview mode
+                               const target = e.target as HTMLElement;
+                               if (target.closest('[data-action="toggle-check"]') || target.closest('[data-action="toggle-uncheck"]')) {
+                                   e.stopPropagation();
+                                   handleCheckboxToggle(idx);
+                                   return;
+                               }
+                               if(focusIndex !== idx) setFocusIndex(idx); 
+                           }}
                         >
                             {/* Focus Indicator (Desktop) */}
                             {focusIndex === idx && (
@@ -379,14 +422,19 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                     
                     {/* Click area to append */}
                     <div 
-                       className="flex-1 cursor-text min-h-[150px] opacity-0 hover:opacity-100 transition-opacity flex items-start pt-4 text-sm text-surface-fg/20" 
+                       className="flex-1 cursor-text min-h-[250px] opacity-100 transition-opacity flex items-start pt-4 text-sm text-surface-fg/10 hover:text-surface-fg/30" 
                        onClick={(e) => {
                         if (e.target === e.currentTarget) {
-                            const newId = generateId();
-                            const newBlocks = [...blocks, { id: newId, content: '' }];
-                            setBlocks(newBlocks);
-                            setFocusIndex(newBlocks.length - 1);
-                            setCursorOffset(0);
+                            if (blocks.length > 0 && blocks[blocks.length - 1].content === '') {
+                                setFocusIndex(blocks.length - 1);
+                                setCursorOffset(0);
+                            } else {
+                                const newId = generateId();
+                                const newBlocks = [...blocks, { id: newId, content: '' }];
+                                setBlocks(newBlocks);
+                                setFocusIndex(newBlocks.length - 1);
+                                setCursorOffset(0);
+                            }
                         }
                        }}
                     >
@@ -423,7 +471,7 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
                                 <div className="text-sm opacity-80 leading-relaxed font-light">
                                     {link.content.substring(0, 200)}...
                                 </div>
-                                <button onClick={() => onSwitchActivity(link)} className="mt-4 text-xs font-bold uppercase tracking-wider text-primary opacity-60 hover:opacity-100 flex items-center gap-1">
+                                <button onClick={() => handleSafeSwitchActivity(link)} className="mt-4 text-xs font-bold uppercase tracking-wider text-primary opacity-60 hover:opacity-100 flex items-center gap-1">
                                     Open Note <ArrowRight size={12}/>
                                 </button>
                             </div>
