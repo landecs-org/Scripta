@@ -1,3 +1,4 @@
+
 export interface Activity {
   id: string;
   title: string;
@@ -32,6 +33,7 @@ export interface AppSettings {
   cardDensity: 'comfortable' | 'compact';
   enableHaptics: boolean;
   enableAnalytics: boolean;
+  livePreview: boolean;
 }
 
 export enum ViewName {

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { 
   Activity, 
@@ -13,7 +14,7 @@ import { Settings } from './components/Settings';
 import { ConfirmationModal } from './components/ConfirmationModal';
 import { Onboarding } from './components/Onboarding';
 import { DonationPrompt } from './components/DonationPrompt';
-import { Menu } from 'lucide-react';
+import { Menu, WifiOff } from 'lucide-react';
 import { Analytics } from "@vercel/analytics/react";
 
 const App: React.FC = () => {
@@ -24,6 +25,7 @@ const App: React.FC = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showDonationPrompt, setShowDonationPrompt] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   const [confirmState, setConfirmState] = useState<{
     isOpen: boolean;
@@ -51,6 +53,12 @@ const App: React.FC = () => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
     window.addEventListener('resize', handleResize);
     
+    // Offline status handlers
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
     const visited = localStorage.getItem('scripta_visited');
     if (!visited) {
         setShowOnboarding(true);
@@ -64,7 +72,11 @@ const App: React.FC = () => {
         }
     }
 
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   const completeOnboarding = (analyticsEnabled: boolean) => {
@@ -252,6 +264,12 @@ const App: React.FC = () => {
     <div className="h-full flex relative overflow-hidden bg-background text-surface-fg transition-colors duration-300">
         
         {settings.enableAnalytics && <Analytics />}
+        
+        {isOffline && (
+            <div className="fixed top-0 left-0 w-full bg-red-500/10 backdrop-blur-md text-red-500 text-xs font-bold uppercase tracking-widest text-center py-1 z-[200] border-b border-red-500/20 flex items-center justify-center gap-2">
+                <WifiOff size={12} /> Offline Mode
+            </div>
+        )}
         
         {showOnboarding && <Onboarding onComplete={completeOnboarding} />}
         {showDonationPrompt && !showOnboarding && <DonationPrompt onClose={closeDonationPrompt} />}

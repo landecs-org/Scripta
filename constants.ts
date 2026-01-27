@@ -1,3 +1,4 @@
+
 import { ThemeName, ThemeMode, AppSettings } from './types';
 
 export const THEMES: Record<ThemeName, { light: Record<string, string>; dark: Record<string, string> }> = {
@@ -109,6 +110,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   cardDensity: 'comfortable',
   enableHaptics: true,
   enableAnalytics: false,
+  livePreview: true,
 };
 
 export const CARD_COLORS = [

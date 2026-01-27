@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Activity } from '../types';
 import { ArrowLeft, ChevronDown, ChevronUp, Link as LinkIcon, Palette, X, BarChart2, Check, ExternalLink, Share2, Copy, FileText, Download, Mic, MicOff, Maximize2, Minimize2, MoreVertical, Save, Clock, Slash, ArrowRight, Bold, Italic, Hash, List, CheckSquare, Type, Eye, EyeOff } from 'lucide-react';
 import { dbService } from '../services/db';
@@ -9,7 +10,7 @@ import { ConfirmationModal } from './ConfirmationModal';
 import { analyzeText } from '../utils/analytics';
 import { getAdaptiveColor, isDarkMode } from '../utils/colors';
 import { exportActivity } from '../utils/dataTransfer';
-import { CARD_COLORS } from '../constants';
+import { CARD_COLORS, DEFAULT_SETTINGS } from '../constants';
 
 interface EditorProps {
   activity: Activity;
@@ -20,84 +21,92 @@ interface EditorProps {
   onSwitchActivity: (activity: Activity) => void;
 }
 
-// Improved Markdown Parser Component
-const MarkdownPreview: React.FC<{ content: string }> = ({ content }) => {
-  if (!content) return <div className="text-surface-fg/30 italic">No content to preview</div>;
+// Reusable Auto-Resizing Textarea for Blocks
+const AutoTextarea = ({ value, onChange, onKeyDown, autoFocus, placeholder, className, onBlur, onFocus }: any) => {
+    const ref = useRef<HTMLTextAreaElement>(null);
 
-  const renderContent = (text: string) => {
-    // Basic safety escape
-    let html = text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    useEffect(() => {
+        if(ref.current) {
+            ref.current.style.height = 'auto';
+            ref.current.style.height = ref.current.scrollHeight + 'px';
+        }
+    }, [value]);
 
-    // Images ![alt](url)
-    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-xl my-4 max-w-full shadow-md" />');
+    useEffect(() => {
+        if (autoFocus && ref.current) {
+            ref.current.focus();
+            // Optional: Move cursor to end if needed, but default behavior is usually fine
+            // const len = ref.current.value.length;
+            // ref.current.setSelectionRange(len, len);
+        }
+    }, [autoFocus]);
 
-    // Code blocks
-    html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
-    
-    // Inline code
-    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    return (
+        <textarea
+            ref={ref}
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            onKeyDown={onKeyDown}
+            onBlur={onBlur}
+            onFocus={onFocus}
+            placeholder={placeholder}
+            rows={1}
+            className={`resize-none overflow-hidden outline-none bg-transparent w-full ${className}`}
+        />
+    )
+}
 
-    // Horizontal Rule
-    html = html.replace(/^---$/gm, '<hr />');
-    html = html.replace(/^\*\*\*$/gm, '<hr />');
+// Markdown Renderer for a single block
+const MarkdownBlock: React.FC<{ content: string }> = ({ content }) => {
+    if (!content) return <div className="h-6 w-full opacity-0">.</div>; // Spacer for empty lines
 
-    // Headers
-    html = html.replace(/^# (.*$)/gm, '<h1>$1</h1>');
-    html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>');
-    html = html.replace(/^### (.*$)/gm, '<h3>$1</h3>');
+    const renderContent = (text: string) => {
+        let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        
+        // Images
+        html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="rounded-xl my-2 max-w-full shadow-md" />');
 
-    // Blockquotes
-    html = html.replace(/^> (.*$)/gm, '<blockquote>$1</blockquote>');
+        // Headers
+        if (html.startsWith('# ')) return `<h1 class="text-3xl font-bold mt-4 mb-2">${html.substring(2)}</h1>`;
+        if (html.startsWith('## ')) return `<h2 class="text-2xl font-bold mt-3 mb-2">${html.substring(3)}</h2>`;
+        if (html.startsWith('### ')) return `<h3 class="text-xl font-bold mt-2 mb-1">${html.substring(4)}</h3>`;
 
-    // Bold
-    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/__(.*?)__/g, '<strong>$1</strong>');
+        // Blockquotes
+        if (html.startsWith('> ')) return `<blockquote class="border-l-4 border-primary pl-4 italic opacity-80 my-2">${html.substring(2)}</blockquote>`;
 
-    // Italic
-    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    html = html.replace(/_(.*?)_/g, '<em>$1</em>');
+        // Lists
+        if (html.match(/^\s*-\s+/)) return `<li class="list-disc list-inside ml-4">${html.replace(/^\s*-\s+/, '')}</li>`;
+        if (html.match(/^\s*\d+\.\s+/)) return `<li class="list-decimal list-inside ml-4">${html.replace(/^\s*\d+\.\s+/, '')}</li>`;
 
-    // Strikethrough
-    html = html.replace(/~~(.*?)~~/g, '<del>$1</del>');
+        // Checkboxes
+        if (html.match(/^\s*\[ \]\s+/)) return `<div class="flex items-center gap-2 my-1"><div class="w-4 h-4 border border-current rounded opacity-50"></div><span>${html.replace(/^\s*\[ \]\s+/, '')}</span></div>`;
+        if (html.match(/^\s*\[x\]\s+/)) return `<div class="flex items-center gap-2 my-1"><div class="w-4 h-4 bg-primary text-white flex items-center justify-center rounded"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4"><polyline points="20 6 9 17 4 12"></polyline></svg></div><span class="opacity-50 line-through">${html.replace(/^\s*\[x\]\s+/, '')}</span></div>`;
+        
+        // Inline styles
+        html = html.replace(/`([^`]+)`/g, '<code class="bg-black/5 dark:bg-white/10 px-1 rounded font-mono text-sm">$1</code>');
+        html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/__(.*?)__/g, '<strong>$1</strong>');
+        html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        html = html.replace(/_(.*?)_/g, '<em>$1</em>');
+        html = html.replace(/~~(.*?)~~/g, '<del>$1</del>');
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-primary hover:underline">$1</a>');
 
-    // Unordered Lists - fix regex to handle multiple items better
-    html = html.replace(/^\s*-\s+(.*$)/gm, '<li>$1</li>');
-    html = html.replace(/(<li>.*<\/li>)/g, '<ul>$1</ul>');
-    // Clean up adjacent ul tags
-    html = html.replace(/<\/ul>\s*<ul>/g, '');
+        return `<p class="leading-relaxed min-h-[1.5em]">${html}</p>`;
+    };
 
-    // Checkboxes (Task lists)
-    html = html.replace(/^\s*\[ \]\s+(.*$)/gm, '<div class="flex items-start gap-3 mb-2"><div class="mt-1 w-4 h-4 border border-current rounded opacity-50 shrink-0"></div><span>$1</span></div>');
-    html = html.replace(/^\s*\[x\]\s+(.*$)/gm, '<div class="flex items-start gap-3 mb-2"><div class="mt-1 w-4 h-4 bg-primary text-white flex items-center justify-center rounded shrink-0"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4"><polyline points="20 6 9 17 4 12"></polyline></svg></div><span class="opacity-50 line-through">$1</span></div>');
-
-    // Links [text](url) - ensure this is last to avoid conflict with images
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">$1</a>');
-
-    // Line breaks for paragraphs (if not inside pre/ul/blockquote/li)
-    // A simple approach: Replace double newlines with paragraph tags? 
-    // For this simple parser, we preserve newlines as br unless it looks like a block level element
-    html = html.replace(/\n/g, '<br />');
-    
-    // Cleanup br tags after block elements to prevent huge gaps
-    html = html.replace(/(<\/h[1-6]>|<\/ul>|<\/pre>|<\/blockquote>|<\/div>)<br \/>/g, '$1');
-
-    return { __html: html };
-  };
-
-  return (
-    <div 
-      className="markdown-body selectable-text pb-32 text-lg leading-loose break-words"
-      dangerouslySetInnerHTML={renderContent(content)} 
-    />
-  );
+    return <div dangerouslySetInnerHTML={{ __html: renderContent(content) }} className="markdown-block break-words" />;
 };
 
 export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWordCount, allActivities = [], onSwitchActivity }) => {
+  const settings = JSON.parse(localStorage.getItem('scripta_settings') || JSON.stringify(DEFAULT_SETTINGS));
+  const isLivePreview = settings.livePreview;
+
   const [title, setTitle] = useState(activity.title);
   const [content, setContent] = useState(activity.content);
+  // Block state
+  const [blocks, setBlocks] = useState<string[]>(activity.content.split('\n'));
+  const [focusIndex, setFocusIndex] = useState<number | null>(null);
+
   const [flatColor, setFlatColor] = useState(activity.flatColor);
   const [adaptiveColor, setAdaptiveColor] = useState(activity.flatColor);
   const [linkedActivities, setLinkedActivities] = useState<Activity[]>([]);
@@ -105,104 +114,119 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
   const [isSaving, setIsSaving] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [showFormatBar, setShowFormatBar] = useState(false);
-  const [isReadingMode, setIsReadingMode] = useState(false);
-  
-  const [isDictating, setIsDictating] = useState(false);
-  const [showDictationModal, setShowDictationModal] = useState(false);
-  const [dictatedText, setDictatedText] = useState('');
-  const recognitionRef = useRef<any>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showLinkPicker, setShowLinkPicker] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
-  
-  const [contentVisible, setContentVisible] = useState(true);
   const [collapsedLinks, setCollapsedLinks] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    const updateColor = () => {
-        setAdaptiveColor(getAdaptiveColor(flatColor, isDarkMode()));
-    };
-    updateColor();
-    const observer = new MutationObserver(updateColor);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-    return () => observer.disconnect();
-  }, [flatColor]);
-
-  const vibrate = (ms: number = 10) => {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        const settings = localStorage.getItem('scripta_settings');
-        if (settings && JSON.parse(settings).enableHaptics) {
-            navigator.vibrate(ms);
-        }
-    }
-  };
-
-  const toggleFocusMode = () => {
-      setFocusMode(!focusMode);
-      vibrate(20);
-  };
-
-  const [confirmState, setConfirmState] = useState<{
-      isOpen: boolean;
-      title: string;
-      message: string;
-      isDangerous: boolean;
-      onConfirm: () => void;
-  }>({
-      isOpen: false,
-      title: '',
-      message: '',
-      isDangerous: false,
-      onConfirm: () => {},
-  });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  // Confirms
+  const [confirmState, setConfirmState] = useState({ isOpen: false, title: '', message: '', isDangerous: false, onConfirm: () => {} });
 
   const stats = useMemo(() => analyzeText(content), [content]);
 
   useEffect(() => {
+      setAdaptiveColor(getAdaptiveColor(flatColor, isDarkMode()));
+  }, [flatColor]);
+
+  const vibrate = (ms = 10) => {
+     if (navigator.vibrate && settings.enableHaptics) navigator.vibrate(ms);
+  };
+
+  // Sync Blocks to Content string for saving
+  useEffect(() => {
+      if (isLivePreview) {
+          const joined = blocks.join('\n');
+          if (joined !== content) setContent(joined);
+      }
+  }, [blocks, isLivePreview]);
+
+  // Sync Content string to Blocks (if external change or switch mode)
+  useEffect(() => {
+      if (content !== blocks.join('\n')) {
+          setBlocks(content.split('\n'));
+      }
+  }, [content]); // careful with loops here, split/join should be stable
+
+  // Auto-save
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (title !== activity.title || content !== activity.content || flatColor !== activity.flatColor) {
+        setIsSaving(true);
+        await onSave({ ...activity, title, content, flatColor, wordCount: stats.words, updatedAt: new Date().toISOString() });
+        setIsSaving(false);
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [title, content, flatColor]);
+
+  // Link loading
+  useEffect(() => {
     const loadLinked = async () => {
-        if (activity.linkedActivityIds && activity.linkedActivityIds.length > 0) {
-            const promises = activity.linkedActivityIds.map(id => dbService.getActivity(id));
-            const results = await Promise.all(promises);
+        if (activity.linkedActivityIds?.length) {
+            const results = await Promise.all(activity.linkedActivityIds.map(id => dbService.getActivity(id)));
             setLinkedActivities(results.filter((a): a is Activity => !!a));
-        } else {
-            setLinkedActivities([]);
         }
     };
     loadLinked();
   }, [activity.linkedActivityIds]);
 
-  // Auto-save logic
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (title !== activity.title || content !== activity.content || flatColor !== activity.flatColor) {
-        await forceSave();
+  const handleBlockChange = (index: number, val: string) => {
+      const newBlocks = [...blocks];
+      newBlocks[index] = val;
+      setBlocks(newBlocks);
+  };
+
+  const handleBlockKeyDown = (index: number, e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          const newBlocks = [...blocks];
+          newBlocks.splice(index + 1, 0, ''); // insert new line
+          setBlocks(newBlocks);
+          setFocusIndex(index + 1);
+      } else if (e.key === 'Backspace') {
+          if (blocks[index] === '' && blocks.length > 1) {
+              e.preventDefault();
+              const newBlocks = [...blocks];
+              newBlocks.splice(index, 1);
+              setBlocks(newBlocks);
+              setFocusIndex(Math.max(0, index - 1));
+          } else if (e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0 && index > 0) {
+              e.preventDefault();
+              const newBlocks = [...blocks];
+              const prevLength = newBlocks[index - 1].length;
+              newBlocks[index - 1] += newBlocks[index];
+              newBlocks.splice(index, 1);
+              setBlocks(newBlocks);
+              setFocusIndex(index - 1);
+              // We'd ideally place cursor at prevLength, but simpler for now to focus end
+          }
+      } else if (e.key === 'ArrowUp') {
+          if (index > 0) {
+              e.preventDefault();
+              setFocusIndex(index - 1);
+          }
+      } else if (e.key === 'ArrowDown') {
+          if (index < blocks.length - 1) {
+              e.preventDefault();
+              setFocusIndex(index + 1);
+          }
       }
-    }, 1500); 
-    return () => clearTimeout(timer);
-  }, [title, content, flatColor]);
+  };
 
-  const forceSave = async () => {
-      setIsSaving(true);
-      const updatedActivity: Activity = {
-          ...activity,
-          title,
-          content,
-          flatColor,
-          wordCount: stats.words,
-          updatedAt: new Date().toISOString(),
-      };
-      await onSave(updatedActivity);
-      setIsSaving(false);
-  }
-
-  const handleBack = async () => {
-      vibrate(10);
-      await forceSave();
-      onBack();
+  const handleLinkActivity = async (id: string) => {
+      setShowMobileMenu(false); setShowLinkPicker(false);
+      if (activity.linkedActivityIds?.includes(id) || id === activity.id) return;
+      
+      const linked = await dbService.getActivity(id);
+      if (linked) {
+          setLinkedActivities(p => [...p, linked]);
+          await onSave({ ...activity, linkedActivityIds: [...(activity.linkedActivityIds||[]), id], updatedAt: new Date().toISOString() });
+          vibrate();
+      }
   };
 
   const triggerConfirm = (title: string, message: string, isDangerous: boolean, onConfirm: () => void) => {
@@ -210,228 +234,45 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
     setConfirmState({ isOpen: true, title, message, isDangerous, onConfirm });
   };
 
-  const updateLinkedActivity = async (linkedId: string, newContent: string) => {
-      setLinkedActivities(prev => prev.map(a => a.id === linkedId ? { ...a, content: newContent } : a));
-      const act = linkedActivities.find(a => a.id === linkedId);
-      if (act) {
-          await dbService.saveActivity({ ...act, content: newContent, updatedAt: new Date().toISOString() });
-      }
-  };
-
-  const handlePaste = async (e: React.ClipboardEvent) => {
-    const pastedText = e.clipboardData.getData('text');
-    if (!pastedText || pastedText.length < 20) return;
-
-    const match = allActivities.find(a => 
-       a.id !== activity.id && !a.deleted && (
-          (a.title && pastedText.trim().toLowerCase() === a.title.toLowerCase()) ||
-          (a.content.length > 50 && a.content.includes(pastedText))
-       )
-    );
-
-    if (match) {
-        e.preventDefault();
-        triggerConfirm(
-            "Link Activity?",
-            `You pasted text that matches "${match.title}". Would you like to link to that activity instead of pasting the text?`,
-            false,
-            () => handleLinkActivity(match.id, true)
-        );
-        return;
-    }
-  };
-
-  const insertFormat = (syntax: string, type: 'wrap' | 'block') => {
-      vibrate(5);
-      const textarea = textareaRef.current;
-      if (!textarea) return;
-
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const currentText = textarea.value;
-      const before = currentText.substring(0, start);
-      const selection = currentText.substring(start, end);
-      const after = currentText.substring(end);
-
-      let newText = '';
-      let newCursorPos = 0;
-
-      if (type === 'wrap') {
-          newText = `${before}${syntax}${selection}${syntax}${after}`;
-          newCursorPos = start + syntax.length + selection.length + syntax.length; 
-          if (selection.length === 0) newCursorPos = start + syntax.length;
-      } else {
-          // Check if we are at start of line
-          const lastNewLine = before.lastIndexOf('\n');
-          const isStartOfLine = lastNewLine === before.length - 1 || start === 0;
-          const prefix = isStartOfLine ? '' : '\n';
-          newText = `${before}${prefix}${syntax} ${selection}${after}`;
-          newCursorPos = newText.length - after.length;
-      }
-
-      setContent(newText);
-      setTimeout(() => {
-          textarea.focus();
-          textarea.setSelectionRange(newCursorPos, newCursorPos);
-      }, 0);
-  };
-
-  const startDictation = () => {
-      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-          alert('Voice dictation is not supported in this browser.');
-          return;
-      }
-      setShowMobileMenu(false);
-      vibrate(10);
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-      recognition.onstart = () => {
-          setIsDictating(true);
-          setShowDictationModal(true);
-          setDictatedText('');
-      };
-      recognition.onresult = (event: any) => {
-          let final = '';
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-              if (event.results[i].isFinal) final += event.results[i][0].transcript;
-          }
-          if (final) setDictatedText(prev => prev + ' ' + final);
-      };
-      recognition.onend = () => setIsDictating(false);
-      recognition.start();
-      recognitionRef.current = recognition;
-  };
-
-  const stopDictation = () => {
-      vibrate(10);
-      if (recognitionRef.current) {
-          recognitionRef.current.stop();
-          setIsDictating(false);
-      }
-  };
-
-  const handleDictationAction = (action: 'insert' | 'discard') => {
-      vibrate(10);
-      if (action === 'discard') {
-          setShowDictationModal(false);
-          setDictatedText('');
-          return;
-      }
-      if (action === 'insert') {
-          setContent(prev => prev + (prev ? '\n' : '') + dictatedText.trim());
-          setShowDictationModal(false);
-          setDictatedText('');
-          return;
-      }
-  };
-
-  const handleLinkActivity = async (id: string, skipConfirm = false) => {
-      setShowMobileMenu(false);
-      const currentLinks = activity.linkedActivityIds || [];
-      if (currentLinks.length >= 5) { alert("Maximum 5 linked activities allowed."); return; }
-      if (currentLinks.includes(id) || id === activity.id) { setShowLinkPicker(false); return; }
-      const linkedActivity = await dbService.getActivity(id);
-      const doLink = async () => {
-        const newLinks = [...currentLinks, id];
-        const updated = { ...activity, linkedActivityIds: newLinks, updatedAt: new Date().toISOString() };
-        if (linkedActivity) setLinkedActivities(prev => [...prev, linkedActivity]);
-        await onSave(updated);
-        setShowLinkPicker(false);
-        vibrate(20);
-      };
-      if (!skipConfirm && linkedActivity) {
-          triggerConfirm("Link Activity?", `Link "${linkedActivity.title}"?`, false, doLink);
-      } else { doLink(); }
-  };
-  
-  const handleUnlink = async (id: string) => {
-      const act = linkedActivities.find(a => a.id === id);
-      triggerConfirm(
-          "Unlink Activity?", 
-          `Remove link to "${act?.title || 'activity'}"?`, 
-          true, 
-          async () => {
-              const newLinks = activity.linkedActivityIds.filter(lid => lid !== id);
-              const updated = { ...activity, linkedActivityIds: newLinks, updatedAt: new Date().toISOString() };
-              setLinkedActivities(prev => prev.filter(a => a.id !== id));
-              await onSave(updated);
-              vibrate(20);
-          }
-      );
-  };
-
-  const toggleLinkCollapse = (id: string) => { vibrate(5); setCollapsedLinks(prev => ({ ...prev, [id]: !prev[id] })); };
-
   return (
     <div 
         className={`flex flex-col h-full animate-slide-up bg-surface transition-colors duration-700 ease-fluid ${focusMode ? 'fixed inset-0 z-[100]' : ''}`} 
         style={adaptiveColor && adaptiveColor !== 'transparent' ? { backgroundColor: adaptiveColor } : {}}
-        onClick={() => { 
-            if(showExportMenu) setShowExportMenu(false); 
-            if(showMobileMenu) setShowMobileMenu(false);
-        }}
+        onClick={() => { if(showExportMenu) setShowExportMenu(false); if(showMobileMenu) setShowMobileMenu(false); }}
     >
       {!focusMode && (
           <div className="flex items-center justify-between p-4 glass sticky top-0 z-20 border-b border-black/5 dark:border-white/5 transition-all duration-300 print:hidden select-none min-h-[64px]">
-            <button onClick={handleBack} className="p-2 hover:bg-black/5 rounded-full transition-colors text-surface-fg/70 hover:text-primary active:scale-95 duration-200">
+            <button onClick={() => { onBack(); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full transition-colors text-surface-fg/70 hover:text-primary active:scale-95 duration-200">
               <ArrowLeft size={24} />
             </button>
             
             <div className="flex items-center gap-1 sm:gap-2 relative">
-              {isSaving && (
-                <div className="flex items-center gap-2 mr-2 px-3 py-1 bg-primary/10 rounded-full">
-                    <Save size={14} className="text-primary animate-pulse"/>
-                    <span className="text-[10px] uppercase font-bold tracking-tighter text-primary">Autosaving</span>
-                </div>
-              )}
+              {isSaving && <div className="mr-2 px-3 py-1 bg-primary/10 rounded-full text-[10px] uppercase font-bold text-primary animate-pulse">Autosaving</div>}
               
-              {/* Desktop Toolbar */}
               <div className="hidden md:flex items-center gap-1">
-                  <button onClick={() => setIsReadingMode(!isReadingMode)} className={`p-2 rounded-full text-surface-fg/70 active:scale-90 duration-200 ${isReadingMode ? 'bg-black/5 text-primary' : 'hover:bg-black/5'}`} title={isReadingMode ? "Edit Mode" : "Read Mode"}>
-                      {isReadingMode ? <EyeOff size={20}/> : <Eye size={20} />}
-                  </button>
-                  {!isReadingMode && (
-                      <button onClick={() => setShowFormatBar(!showFormatBar)} className={`p-2 rounded-full text-surface-fg/70 active:scale-90 duration-200 ${showFormatBar ? 'bg-black/5 text-primary' : 'hover:bg-black/5'}`} title="Formatting"><Type size={20} /></button>
-                  )}
-                  <button onClick={startDictation} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Dictate"><Mic size={20} /></button>
-                  <button onClick={() => { vibrate(10); setShowColorPicker(!showColorPicker); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Change Color"><Palette size={20} /></button>
-                  <button onClick={() => { vibrate(10); setShowLinkPicker(true); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Link Thought"><LinkIcon size={20} /></button>
-                  <button onClick={(e) => { e.stopPropagation(); vibrate(10); setShowExportMenu(!showExportMenu); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Share"><Share2 size={20} /></button>
+                  <button onClick={() => { setShowColorPicker(!showColorPicker); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90" title="Color"><Palette size={20} /></button>
+                  <button onClick={() => { setShowLinkPicker(true); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90" title="Link"><LinkIcon size={20} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); setShowExportMenu(!showExportMenu); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90" title="Share"><Share2 size={20} /></button>
               </div>
 
-              <button onClick={toggleFocusMode} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200" title="Focus Mode"><Maximize2 size={20} /></button>
+              <button onClick={() => { setFocusMode(true); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90" title="Focus"><Maximize2 size={20} /></button>
 
-              {/* Mobile Menu Button */}
               <div className="md:hidden relative">
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); setShowMobileMenu(!showMobileMenu); }} 
-                    className={`p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90 duration-200 ${showMobileMenu ? 'bg-black/5' : ''}`}
-                  >
+                  <button onClick={(e) => { e.stopPropagation(); setShowMobileMenu(!showMobileMenu); vibrate(); }} className="p-2 hover:bg-black/5 rounded-full text-surface-fg/70 active:scale-90">
                       <MoreVertical size={20} />
                   </button>
-                  
                   {showMobileMenu && (
-                      <div className="absolute top-12 right-0 bg-surface rounded-xl shadow-xl border border-black/10 w-56 animate-scale-in origin-top-right overflow-hidden z-30 flex flex-col p-2">
-                          <MobileMenuItem icon={isReadingMode ? <EyeOff size={18}/> : <Eye size={18}/>} label={isReadingMode ? "Switch to Edit" : "Switch to Read"} onClick={() => { setIsReadingMode(!isReadingMode); setShowMobileMenu(false); }} />
-                          <div className="h-px bg-black/5 dark:bg-white/5 my-1 mx-2"></div>
-                          {!isReadingMode && (
-                              <MobileMenuItem icon={<Type size={18}/>} label={showFormatBar ? "Hide Formatting" : "Show Formatting"} onClick={() => { setShowFormatBar(!showFormatBar); setShowMobileMenu(false); }} />
-                          )}
-                          <MobileMenuItem icon={<Mic size={18}/>} label="Dictate" onClick={startDictation} />
-                          <MobileMenuItem icon={<Palette size={18}/>} label="Color Theme" onClick={() => setShowColorPicker(true)} />
-                          <MobileMenuItem icon={<LinkIcon size={18}/>} label="Link Activity" onClick={() => setShowLinkPicker(true)} />
-                          <div className="h-px bg-black/5 dark:bg-white/5 my-1 mx-2"></div>
-                          <MobileMenuItem icon={<Share2 size={18}/>} label="Export & Share" onClick={() => setShowExportMenu(true)} />
-                          <MobileMenuItem icon={<BarChart2 size={18}/>} label="View Stats" onClick={() => setShowAnalytics(true)} />
+                      <div className="absolute top-12 right-0 bg-surface rounded-xl shadow-xl border border-black/10 w-56 animate-scale-in z-30 p-2 flex flex-col">
+                          <button onClick={() => setShowColorPicker(true)} className="flex items-center gap-3 p-3 hover:bg-black/5 rounded-lg"><Palette size={18}/> Color Theme</button>
+                          <button onClick={() => setShowLinkPicker(true)} className="flex items-center gap-3 p-3 hover:bg-black/5 rounded-lg"><LinkIcon size={18}/> Link Activity</button>
+                          <button onClick={() => setShowExportMenu(true)} className="flex items-center gap-3 p-3 hover:bg-black/5 rounded-lg"><Share2 size={18}/> Share</button>
+                          <button onClick={() => setShowAnalytics(true)} className="flex items-center gap-3 p-3 hover:bg-black/5 rounded-lg"><BarChart2 size={18}/> Stats</button>
                       </div>
                   )}
               </div>
 
               {showExportMenu && (
-                 <div className="absolute top-12 right-0 bg-surface rounded-xl shadow-xl border border-black/10 w-48 animate-scale-in origin-top-right overflow-hidden z-30" onClick={e => e.stopPropagation()}>
+                 <div className="absolute top-12 right-0 bg-surface rounded-xl shadow-xl border border-black/10 w-48 animate-scale-in z-30 overflow-hidden">
                     <button onClick={() => { navigator.clipboard.writeText(`${title}\n\n${content}`); setShowExportMenu(false); }} className="w-full text-left px-4 py-3 hover:bg-black/5 flex items-center gap-2"><Copy size={16}/> Copy Text</button>
                     <button onClick={() => { exportActivity(activity, 'txt'); setShowExportMenu(false); }} className="w-full text-left px-4 py-3 hover:bg-black/5 flex items-center gap-2"><FileText size={16}/> Save as .txt</button>
                     <button onClick={() => { exportActivity(activity, 'md'); setShowExportMenu(false); }} className="w-full text-left px-4 py-3 hover:bg-black/5 flex items-center gap-2"><Download size={16}/> Save as .md</button>
@@ -442,120 +283,79 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
       )}
 
       {focusMode && (
-          <button 
-             onClick={toggleFocusMode}
-             className="fixed top-6 right-6 z-[110] p-4 bg-transparent text-surface-fg/30 hover:text-surface-fg hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-all duration-300 transform active:scale-90"
-             title="Exit Focus Mode"
-          >
+          <button onClick={() => setFocusMode(false)} className="fixed top-6 right-6 z-[110] p-4 text-surface-fg/30 hover:text-surface-fg hover:bg-black/5 rounded-full transition-all active:scale-90">
              <Minimize2 size={28} />
           </button>
       )}
 
-      <div className={`flex-1 overflow-y-auto w-full no-scrollbar scroll-smooth print:overflow-visible transition-all duration-700 ease-fluid ${focusMode ? 'px-[5vw] pt-24 pb-32 flex flex-col items-center' : 'px-6 py-8 max-w-3xl mx-auto pb-32'}`}>
-        
-        {/* Markdown Toolbar */}
-        {!isReadingMode && showFormatBar && (
-            <div className={`w-full max-w-2xl mx-auto mb-6 flex items-center justify-center gap-2 sm:gap-4 p-2 rounded-xl bg-black/5 dark:bg-white/5 animate-slide-up sticky top-0 z-10 backdrop-blur-sm ${focusMode ? 'mb-12' : ''}`}>
-                <button onClick={() => insertFormat('**', 'wrap')} className="p-2 hover:bg-background rounded-lg transition-colors text-surface-fg/70 hover:text-primary"><Bold size={18}/></button>
-                <button onClick={() => insertFormat('_', 'wrap')} className="p-2 hover:bg-background rounded-lg transition-colors text-surface-fg/70 hover:text-primary"><Italic size={18}/></button>
-                <div className="w-px h-6 bg-surface-fg/10"></div>
-                <button onClick={() => insertFormat('#', 'block')} className="p-2 hover:bg-background rounded-lg transition-colors text-surface-fg/70 hover:text-primary"><Hash size={18}/></button>
-                <button onClick={() => insertFormat('-', 'block')} className="p-2 hover:bg-background rounded-lg transition-colors text-surface-fg/70 hover:text-primary"><List size={18}/></button>
-                <button onClick={() => insertFormat('[ ]', 'block')} className="p-2 hover:bg-background rounded-lg transition-colors text-surface-fg/70 hover:text-primary"><CheckSquare size={18}/></button>
-            </div>
-        )}
-
+      <div className={`flex-1 overflow-y-auto w-full no-scrollbar scroll-smooth transition-all duration-700 ease-fluid ${focusMode ? 'px-[5vw] pt-24 pb-32 flex flex-col items-center' : 'px-6 py-8 max-w-3xl mx-auto pb-32'}`}>
         <input 
           type="text" 
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Untitled Thought"
-          className={`bg-transparent font-display font-bold placeholder:text-surface-fg/20 outline-none text-surface-fg transition-all duration-500 ease-fluid selectable-text ${focusMode ? 'text-4xl sm:text-5xl text-left leading-tight mb-16 w-full max-w-4xl opacity-90' : 'text-3xl sm:text-4xl w-full mb-8'}`}
+          className={`bg-transparent font-display font-bold placeholder:text-surface-fg/20 outline-none text-surface-fg transition-all duration-500 ease-fluid ${focusMode ? 'text-4xl sm:text-5xl text-left leading-tight mb-16 w-full max-w-4xl opacity-90' : 'text-3xl sm:text-4xl w-full mb-8'}`}
         />
 
-        {!focusMode && !isReadingMode && (
-            <div className="flex items-center gap-2 text-primary/50 mb-6 cursor-pointer select-none group w-fit print:hidden" onClick={() => { vibrate(5); setContentVisible(!contentVisible); }}>
-              <span className="text-xs font-semibold uppercase tracking-wider group-hover:text-primary transition-colors">Main Content</span>
-              <div className="transform transition-transform duration-300 ease-spring group-hover:text-primary">
-                {contentVisible ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </div>
-            </div>
-        )}
-
-        <div className={`transition-all duration-700 ease-fluid overflow-hidden w-full ${focusMode ? 'max-w-4xl' : ''} ${contentVisible || focusMode ? 'opacity-100 max-h-[5000px]' : 'opacity-0 max-h-0'} print:opacity-100 print:max-h-none`}>
-             {isReadingMode ? (
-                 <MarkdownPreview content={content} />
-             ) : (
-                 <textarea 
+        <div className={`w-full ${focusMode ? 'max-w-4xl' : ''}`}>
+            {isLivePreview ? (
+                <div className="flex flex-col gap-1 min-h-[60vh]">
+                    {blocks.map((blockContent, idx) => (
+                        <div key={idx} className="relative group transition-all duration-300 ease-spring" onClick={() => { if(focusIndex !== idx) setFocusIndex(idx); }}>
+                            {focusIndex === idx ? (
+                                <AutoTextarea 
+                                    autoFocus 
+                                    value={blockContent} 
+                                    onChange={(val: string) => handleBlockChange(idx, val)} 
+                                    onKeyDown={(e: any) => handleBlockKeyDown(idx, e)}
+                                    onBlur={() => setFocusIndex(null)}
+                                    className={`text-lg leading-relaxed font-light ${focusMode ? 'text-xl sm:text-2xl' : ''}`}
+                                    placeholder={blocks.length === 1 ? "Start writing..." : ""}
+                                />
+                            ) : (
+                                <div className={`text-lg leading-relaxed font-light cursor-text min-h-[1.5em] ${focusMode ? 'text-xl sm:text-2xl' : ''} ${!blockContent ? 'h-6' : ''}`}>
+                                    <MarkdownBlock content={blockContent} />
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                    {/* Click area below to append new block */}
+                    <div className="flex-1 cursor-text min-h-[200px]" onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            const newBlocks = [...blocks, ''];
+                            setBlocks(newBlocks);
+                            setFocusIndex(newBlocks.length - 1);
+                        }
+                    }} />
+                </div>
+            ) : (
+                <textarea 
                    ref={textareaRef}
                    value={content}
                    onChange={(e) => setContent(e.target.value)}
-                   onPaste={handlePaste}
                    placeholder="Start writing..."
                    className={`w-full bg-transparent resize-none outline-none font-light text-surface-fg placeholder:text-surface-fg/20 transition-all duration-500 ease-fluid pb-[40vh] text-left selectable-text ${focusMode ? 'text-xl sm:text-2xl leading-[2] tracking-wide min-h-[80vh]' : 'text-lg leading-loose min-h-[60vh] mobile-safe-height'}`}
-                   spellCheck="false"
-                 />
-             )}
+                />
+            )}
         </div>
 
-        {/* Linked Activities Section */}
+        {/* Links */}
         {!focusMode && linkedActivities.length > 0 && (
-            <div className="mt-12 pt-12 relative print:hidden w-full">
-                <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-black/10 dark:via-white/10 to-transparent"></div>
+            <div className="mt-12 pt-12 relative print:hidden w-full border-t border-black/5 dark:border-white/5">
                 <div className="flex items-center justify-between mb-8 px-2">
                     <h3 className="text-xs font-bold uppercase tracking-widest opacity-40 flex items-center gap-2">
-                        <LinkIcon size={14} className="text-primary"/>
-                        Linked Context ({linkedActivities.length}/5)
+                        <LinkIcon size={14} className="text-primary"/> Linked ({linkedActivities.length})
                     </h3>
-                    <button 
-                        onClick={() => setShowLinkPicker(true)}
-                        className="text-[10px] uppercase font-bold text-primary px-3 py-1 bg-primary/5 rounded-full hover:bg-primary/10 transition-colors"
-                    >
-                        + Add Link
-                    </button>
                 </div>
-                
                 <div className="space-y-6">
                     {linkedActivities.map(link => (
-                        <div key={link.id} className="relative group transition-all duration-500 ease-spring">
-                            {/* Connection line */}
-                            <div className="absolute -left-5 top-0 bottom-0 w-[2px] bg-gradient-to-b from-primary/30 via-primary/5 to-transparent border-l-2 border-dashed border-primary/20"></div>
-                            
-                            <div className="pl-6 transition-all duration-300">
-                                <div className="bg-surface/60 backdrop-blur-sm border border-black/5 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:border-primary/20 transition-all">
-                                    <div 
-                                      className="flex items-center justify-between p-4 bg-primary/5 cursor-pointer select-none"
-                                      onClick={() => toggleLinkCollapse(link.id)}
-                                    >
-                                        <div className="flex items-center gap-3 font-bold font-display text-primary flex-1">
-                                            <LinkIcon size={14} />
-                                            <span className="truncate max-w-[180px] sm:max-w-xs">{link.title || 'Untitled'}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <div className="transform transition-transform duration-300 opacity-40">
-                                                {collapsedLinks[link.id] ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className={`transition-all duration-500 ease-fluid ${collapsedLinks[link.id] ? 'max-h-0 opacity-0' : 'max-h-[600px] opacity-100'}`}>
-                                        <textarea 
-                                            value={link.content}
-                                            onChange={(e) => updateLinkedActivity(link.id, e.target.value)}
-                                            className="w-full bg-transparent resize-none outline-none text-sm font-light leading-relaxed min-h-[120px] p-4 placeholder:opacity-30 focus:bg-white/5 transition-colors selectable-text"
-                                            placeholder="Write in this linked thought..."
-                                        />
-                                        <div className="p-2 border-t border-black/5 dark:border-white/5 flex justify-between items-center bg-black/5 dark:bg-white/5">
-                                            <span className="text-[10px] uppercase font-bold tracking-wider opacity-30 pl-2">Live Edit</span>
-                                            <button 
-                                                onClick={() => handleUnlink(link.id)} 
-                                                className="text-[10px] uppercase font-bold text-red-500 opacity-60 hover:opacity-100 px-3 py-1 hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-1"
-                                            >
-                                                <X size={10} /> Unlink
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
+                        <div key={link.id} className="bg-surface/60 backdrop-blur-sm border border-black/5 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all">
+                            <div className="p-4 bg-primary/5 cursor-pointer flex justify-between" onClick={() => setCollapsedLinks(p => ({ ...p, [link.id]: !p[link.id] }))}>
+                                <div className="font-bold text-primary flex gap-2 items-center"><LinkIcon size={14}/> {link.title || 'Untitled'}</div>
+                                {collapsedLinks[link.id] ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
+                            </div>
+                            <div className={`${collapsedLinks[link.id] ? 'hidden' : 'block'} p-4 text-sm opacity-80`}>
+                                {link.content.substring(0, 150)}...
                             </div>
                         </div>
                     ))}
@@ -563,95 +363,35 @@ export const Editor: React.FC<EditorProps> = ({ activity, onSave, onBack, showWo
             </div>
         )}
       </div>
-      
-      {/* Footer / Stats bar */}
+
+      {/* Footer */}
       {!focusMode && showWordCount && (
-        <button 
-          onClick={() => { vibrate(10); setShowAnalytics(true); }}
-          className="fixed bottom-0 left-0 right-0 glass border-t border-black/5 dark:border-white/5 p-4 flex justify-between items-center text-[11px] font-bold uppercase tracking-widest text-surface-fg/50 hover:text-primary transition-colors z-20 print:hidden"
-        >
+        <button onClick={() => setShowAnalytics(true)} className="fixed bottom-0 left-0 right-0 glass border-t border-black/5 p-4 flex justify-between items-center text-[11px] font-bold uppercase tracking-widest text-surface-fg/50 hover:text-primary transition-colors z-20">
            <div className="flex gap-6 mx-auto max-w-3xl w-full px-6">
              <span className="flex items-center gap-1.5"><FileText size={12}/> {stats.words} Words</span>
              <span className="flex items-center gap-1.5"><Clock size={12}/> {stats.readingTime} Read</span>
-             <span className="ml-auto flex items-center gap-1.5 opacity-80 group hover:opacity-100"><BarChart2 size={14} className="group-hover:scale-110 transition-transform"/> Analytics</span>
            </div>
         </button>
       )}
-      
-      {/* Pickers & Modals */}
+
+      {/* Modals */}
       {showColorPicker && (
           <div className="fixed inset-0 z-30" onClick={() => setShowColorPicker(false)}>
-            <div className="absolute top-20 right-4 p-5 bg-surface/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-black/5 z-30 animate-scale-in grid grid-cols-3 gap-3 origin-top-right" onClick={e => e.stopPropagation()}>
+            <div className="absolute top-20 right-4 p-5 bg-surface/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-black/5 z-30 grid grid-cols-3 gap-3 animate-scale-in" onClick={e => e.stopPropagation()}>
                 {CARD_COLORS.map(c => (
-                    <button 
-                        key={c} 
-                        onClick={() => { setFlatColor(c); setShowColorPicker(false); vibrate(10); }} 
-                        className="w-11 h-11 rounded-full border-2 border-black/10 shadow-inner transition-all hover:scale-110 active:scale-90 duration-300 ease-spring relative overflow-hidden" 
-                        style={{ backgroundColor: c }}
-                        title={c === 'transparent' ? "Remove Color" : "Set Color"}
-                    >
-                         {c === 'transparent' && (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <Slash size={20} className="text-black/30 dark:text-white/30" />
-                            </div>
-                         )}
-                    </button>
+                    <button key={c} onClick={() => { setFlatColor(c); setShowColorPicker(false); vibrate(); }} className="w-11 h-11 rounded-full border border-black/10 shadow-sm hover:scale-110 transition-transform" style={{ backgroundColor: c }} />
                 ))}
             </div>
           </div>
       )}
 
       {showLinkPicker && (
-          <ActivityPicker 
-             activities={allActivities.filter(a => a.id !== activity.id && !a.deleted)}
-             onSelect={(id) => handleLinkActivity(id)}
-             onClose={() => setShowLinkPicker(false)}
-          />
+          <ActivityPicker activities={allActivities.filter(a => a.id !== activity.id && !a.deleted)} onSelect={handleLinkActivity} onClose={() => setShowLinkPicker(false)} />
       )}
 
       {showAnalytics && <AnalyticsSheet stats={stats} onClose={() => setShowAnalytics(false)} />}
       
-      {showDictationModal && (
-          <div className="fixed inset-0 z-[120] flex items-end justify-center sm:items-center bg-black/40 backdrop-blur-sm animate-fade-in">
-              <div className="bg-surface w-full max-w-md mx-auto sm:rounded-3xl rounded-t-3xl shadow-2xl p-8 animate-slide-up border border-white/5 flex flex-col gap-6">
-                  <div className="flex items-center justify-between">
-                      <h3 className="font-bold text-xl flex items-center gap-3">
-                          <div className={`w-3 h-3 rounded-full ${isDictating ? 'bg-red-500 animate-pulse ring-4 ring-red-500/20' : 'bg-gray-400'}`}></div>
-                          {isDictating ? 'Transcribing...' : 'Dictation Ready'}
-                      </h3>
-                      <button onClick={stopDictation} className="p-2.5 bg-red-500/10 text-red-500 rounded-full hover:bg-red-500/20 active:scale-90 transition-all"><MicOff size={22}/></button>
-                  </div>
-                  
-                  <div className="bg-black/5 dark:bg-white/5 p-6 rounded-2xl min-h-[120px] max-h-[250px] overflow-y-auto text-xl font-light italic opacity-90 leading-relaxed border border-black/5">
-                      {dictatedText || "The mic is active. Start speaking..."}
-                  </div>
-
-                  <div className="flex gap-3">
-                      <Button variant="ghost" className="flex-1" onClick={() => handleDictationAction('discard')}>Discard</Button>
-                      <Button onClick={() => handleDictationAction('insert')} className="flex-1 gap-2 h-14 text-lg"><Check size={20}/> Use Text</Button>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      <ConfirmationModal 
-         isOpen={confirmState.isOpen}
-         title={confirmState.title}
-         message={confirmState.message}
-         isDangerous={confirmState.isDangerous}
-         onConfirm={confirmState.onConfirm}
-         onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
-      />
+      <ConfirmationModal isOpen={confirmState.isOpen} title={confirmState.title} message={confirmState.message} isDangerous={confirmState.isDangerous} onConfirm={confirmState.onConfirm} onCancel={() => setConfirmState({ ...confirmState, isOpen: false })} />
     </div>
   );
 };
-
-const MobileMenuItem = ({ icon, label, onClick }: { icon: React.ReactNode, label: string, onClick: () => void }) => (
-    <button 
-        onClick={onClick}
-        className="w-full flex items-center gap-4 p-3 rounded-xl text-left transition-all hover:bg-black/5 dark:hover:bg-white/5 text-surface-fg/80 active:scale-[0.98]"
-    >
-        <span className="opacity-70">{icon}</span>
-        <span className="font-semibold text-sm">{label}</span>
-    </button>
-);

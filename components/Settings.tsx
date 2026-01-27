@@ -1,8 +1,9 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { AppSettings, ThemeName } from '../types';
 import { Button } from './Button';
 import { Toggle } from './Toggle';
-import { Moon, Sun, Trash, Type, Database, Download, Upload, Shield, Heart, HelpCircle, AlertTriangle, Check, Loader2, Info } from 'lucide-react';
+import { Moon, Sun, Trash, Type, Database, Download, Upload, Shield, Heart, HelpCircle, AlertTriangle, Check, Loader2, Info, Eye } from 'lucide-react';
 import { exportData, parseImportFile } from '../utils/dataTransfer';
 import { dbService } from '../services/db';
 
@@ -69,8 +70,6 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
           if (window.confirm(`Found ${activities.length} activities in backup. Merge them with your current data?`)) {
               let importedCount = 0;
               for (const activity of activities) {
-                  // Ensure we don't overwrite newer versions if ID exists, or handle merge logic
-                  // For simplicity, we stick to "last write wins" or just saving it as is
                   await dbService.saveActivity(activity);
                   importedCount++;
               }
@@ -129,10 +128,23 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
         </div>
       </section>
 
-      {/* Typography & Layout */}
+      {/* Typography & Editor */}
       <section className="mb-8">
-        <h2 className="text-lg font-bold mb-4 flex items-center gap-2 opacity-70"><Type size={18}/> Customization</h2>
+        <h2 className="text-lg font-bold mb-4 flex items-center gap-2 opacity-70"><Type size={18}/> Editor & Customization</h2>
         <div className="bg-surface rounded-2xl p-6 border border-black/5 dark:border-white/5 shadow-sm space-y-6">
+            <div className="flex items-center justify-between">
+                 <div>
+                    <p className="font-medium flex items-center gap-2"><Eye size={16} className="opacity-70"/> Live Markdown</p>
+                    <p className="text-sm opacity-50">Hide markdown tags until you edit the line.</p>
+                 </div>
+                 <Toggle 
+                    checked={settings.livePreview} 
+                    onChange={(checked) => onUpdateSettings({...settings, livePreview: checked})}
+                 />
+            </div>
+
+            <hr className="border-black/5 dark:border-white/5"/>
+
             <div>
                 <div className="flex justify-between mb-2">
                     <span className="font-medium">Text Size</span>
@@ -284,13 +296,8 @@ export const Settings: React.FC<SettingsProps> = ({ settings, onUpdateSettings, 
                           <p>Scripta operates entirely on your device. Your data is stored in your browser's IndexedDB and is never sent to any server unless you explicitly enable anonymous analytics. We do not track your personal information or content.</p>
                       </div>
 
-                      <div>
-                          <h3 className="font-bold text-lg mb-2 text-surface-fg">Terms of Use</h3>
-                          <p>This software is provided "as is", without warranty of any kind. You are solely responsible for backing up your data using the Export feature provided in Settings.</p>
-                      </div>
-
                       <div className="pt-4 border-t border-black/10 dark:border-white/10">
-                          <p className="text-xs opacity-50">Version 1.0.0 &bull; Local Storage Only</p>
+                          <p className="text-xs opacity-50">Version 1.1.0 &bull; Local Storage Only &bull; Offline Ready</p>
                       </div>
                   </div>
                   
